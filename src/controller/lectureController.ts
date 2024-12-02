@@ -1,17 +1,17 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { Lecture } from '../model/lecture';
 import { AuthGuard } from '../guard/authGuard';
 import { RolesGuard } from '../guard/rolesGuard';
 import { Roles } from '../guard/roles';
 
-@Controller('Lecture')
+@Controller('lecture')
 @UseGuards(AuthGuard)
 export class LectureController {
   @Get(':courseId')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  getLecturesByCourse(@Param('courseId') courseId: string) {
-    // todo: returns a list of lessons for a course
+  getLecturesByCourse(@Param('courseId') courseId: string, @Query("page") page: number, @Query("size") size: number) {
+    // todo: returns a list of lessons for a course with pagination
   }
 
   @Get(':courseId/:lectureId')

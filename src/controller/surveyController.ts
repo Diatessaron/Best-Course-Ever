@@ -11,6 +11,6 @@ export class SurveyController {
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
   addSurvey(@Param('targetId') targetId: string, @Body() createSurveyDto: Survey) {
-    // todo: dds a survey (difficultyRank and interestingRank) for a course, lesson, or user
+    // todo: adds a survey (difficultyRank and interestingRank) for a course, lesson, or user
   }
 }

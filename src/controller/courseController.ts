@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { Course } from '../model/course';
 import { AuthGuard } from '../guard/authGuard';
 import { Roles } from '../guard/roles';
@@ -10,7 +10,7 @@ export class CourseController {
   @Get()
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  getAllCourses(@Param('query') query: string, page: number, size: number) {
+  getAllCourses(@Query('query') query: string, @Query("page") page: number, @Query("size") size: number) {
     // todo: returns a list of all courses with pagination and query for full-text search.
     //  Query can contain name, description, tags, difficultyLevel
   }
@@ -46,7 +46,7 @@ export class CourseController {
   @Post(':id/allow')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  allowUserAccess(@Param('id') courseId: string, @Body('userId') userId: string) {
+  allowUserAccess(@Param('id') courseId: string, @Query('userId') userId: string) {
     // todo: adds a user to the list of allowed accounts for a course
   }
 }

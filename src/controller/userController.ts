@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Param, Body, UseGuards, Query } from '@nestjs/common';
 import { User } from '../model/user';
 import { AuthGuard } from '../guard/authGuard';
 import { Roles } from '../guard/roles';
@@ -8,7 +8,7 @@ import { RolesGuard } from '../guard/rolesGuard';
 @UseGuards(AuthGuard)
 export class UserController {
   @Get()
-  getAllUsers(@Param('nameQuery') nameQuery: string, @Param('page') page: number, @Param('size') size: number) {
+  getAllUsers(@Param('nameQuery') nameQuery: string, @Query('page') page: number, @Query('size') size: number) {
     // todo: returns a list of all users with pagination and name param for a full-text search
   }
 
