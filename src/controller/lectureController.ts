@@ -4,41 +4,41 @@ import { AuthGuard } from '../guard/authGuard';
 import { RolesGuard } from '../guard/rolesGuard';
 import { Roles } from '../guard/roles';
 
-@Controller('lesson')
+@Controller('Lecture')
 @UseGuards(AuthGuard)
-export class LessonController {
+export class LectureController {
   @Get(':courseId')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  getLessonsByCourse(@Param('courseId') courseId: string) {
+  getLecturesByCourse(@Param('courseId') courseId: string) {
     // todo: returns a list of lessons for a course
   }
 
-  @Get(':courseId/:lessonId')
+  @Get(':courseId/:lectureId')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  getLessonById(@Param('courseId') courseId: string, @Param('lessonId') lessonId: string) {
+  getLectureById(@Param('courseId') courseId: string, @Param('lectureId') lectureId: string) {
     // todo: returns a specific lesson with its details
   }
 
   @Post(':courseId')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  createLesson(@Param('courseId') courseId: string, @Body() createLessonDto: Lecture) {
+  createLecture(@Param('courseId') courseId: string, @Body() createLectureDto: Lecture) {
     // todo: adds a new lesson to a course
   }
 
-  @Put(':courseId/:lessonId')
+  @Put(':courseId/:lectureId')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  updateLesson(@Param('courseId') courseId: string, @Param('lessonId') lessonId: string, @Body() updateLessonDto: Lecture) {
+  updateLecture(@Param('courseId') courseId: string, @Param('lectureId') lectureId: string, @Body() updateLectureDto: Lecture) {
     // todo: updates a lesson's details
   }
 
-  @Delete(':courseId/:lessonId')
+  @Delete(':courseId/:lectureId')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
-  deleteLesson(@Param('courseId') courseId: string, @Param('lessonId') lessonId: string) {
+  deleteLecture(@Param('courseId') courseId: string, @Param('lectureId') lectureId: string) {
     // todo: deletes a lesson
   }
 }

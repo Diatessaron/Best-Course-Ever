@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { SurveyController } from './controller/surveyController';
 import { AuthController } from './controller/authController';
 import { UserController } from './controller/userController';
-import { LessonController } from './controller/lessonController';
+import { LectureController } from './controller/lectureController';
 import { CourseController } from './controller/courseController';
 import { CommentController } from './controller/commentController';
 import { AuthGuard } from './guard/authGuard';
@@ -13,7 +13,7 @@ import { RolesGuard } from './guard/rolesGuard';
   controllers: [
     CommentController,
     CourseController,
-    LessonController,
+    LectureController,
     UserController,
     AuthController,
     SurveyController
@@ -25,7 +25,8 @@ import { RolesGuard } from './guard/rolesGuard';
     // AuthService,
     // UserService,
     // LessonService,
-    // SurveyService
+    // SurveyService,
+    // FileService
     RolesGuard,
     AuthGuard
   ],

@@ -1,6 +1,4 @@
-import { Lecture } from './lecture';
-import { IsArray, IsNumber, IsString, IsUUID, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsArray, IsNumber, IsString, IsUUID } from 'class-validator';
 
 export class Course {
   @IsUUID()
@@ -20,7 +18,6 @@ export class Course {
   difficultyLevel: number;
 
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => Lecture)
-  lectures: Lecture[];
+  @IsUUID('4', { each: true })
+  lectures: string[];
 }

@@ -1,6 +1,11 @@
-import { IsArray, IsString } from 'class-validator';
+import { IsArray, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { File } from './file';
 
 export class Lecture {
+  @IsUUID()
+  _id: string;
+
   @IsString()
   name: string;
 
@@ -8,6 +13,7 @@ export class Lecture {
   description: string;
 
   @IsArray()
-  @IsString({ each: true })
-  files: string[];
+  @ValidateNested({ each: true })
+  @Type(() => File)
+  files: File[];
 }
