@@ -11,21 +11,9 @@ describe('CommentController (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [CommentController],
-      providers: [
-        {
-          provide: AuthGuard,
-          useValue: {
-            canActivate: jest.fn(() => true),
-          },
-        },
-        {
-          provide: RolesGuard,
-          useValue: {
-            canActivate: jest.fn(() => true),
-          },
-        },
-      ],
-    }).compile();
+    }).overrideGuard(AuthGuard).useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
