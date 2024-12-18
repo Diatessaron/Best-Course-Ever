@@ -1,10 +1,18 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { User } from '../model/user';
+import { AuthService } from '../service/authService';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private logger: Logger = new Logger(AuthController.name);
+  private authService: AuthService;
+
+  constructor(@Inject() authService: AuthService) {
+    this.authService = authService
+  }
+
   @Post('login')
   @ApiOperation({ summary: 'Authenticate user and return a JWT' })
   @ApiBody({
