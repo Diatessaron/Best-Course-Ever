@@ -14,5 +14,5 @@ export class File {
   uploadDate: Date;
 
   @IsString()
-  link: string;
+  data: Buffer;
 }

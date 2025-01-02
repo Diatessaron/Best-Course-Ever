@@ -7,26 +7,37 @@ import { CourseController } from './controller/courseController';
 import { CommentController } from './controller/commentController';
 import { AuthGuard } from './guard/authGuard';
 import { RolesGuard } from './guard/rolesGuard';
+import { MongoDBModule } from './db/mongoTemplate';
+import { CommentService } from './service/commentService';
+import { UserService } from './service/userService';
+import { CourseService } from './service/courseService';
+import { AuthService } from './service/authService';
+import { SurveyService } from './service/surveyService';
+import { FileService } from './service/fileService';
+import { LectureService } from './service/lectureService';
+import { MigrationService } from './db/migrationService';
+import { FileController } from './controller/fileController';
 
 @Module({
-  imports: [],
+  imports: [MongoDBModule],
   controllers: [
     CommentController,
     CourseController,
     LectureController,
     UserController,
     AuthController,
-    SurveyController
+    SurveyController,
+    FileController
   ],
   providers: [
-    // CommentService,
-    // UserService,
-    // CourseService,
-    // AuthService,
-    // UserService,
-    // LessonService,
-    // SurveyService,
-    // FileService
+    CommentService,
+    CourseService,
+    AuthService,
+    UserService,
+    LectureService,
+    SurveyService,
+    FileService,
+    MigrationService,
     RolesGuard,
     AuthGuard
   ],
