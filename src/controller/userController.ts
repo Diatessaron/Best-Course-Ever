@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Put, Delete, Param, Body, UseGuards, Query, Inject, BadRequestException, Logger,
+  Controller, Get, Put, Delete, Param, Body, UseGuards, Query, Inject, BadRequestException, Logger, ParseIntPipe,
 } from '@nestjs/common';
 import { User } from '../model/user';
 import { AuthGuard } from '../guard/authGuard';
@@ -26,7 +26,7 @@ export class UserController {
   @ApiQuery({ name: 'nameQuery', description: 'Name query for full-text search', required: false, type: String })
   @ApiQuery({ name: 'page', description: 'Page number for pagination', required: false, type: Number })
   @ApiQuery({ name: 'size', description: 'Number of items per page', required: false, type: Number })
-  getAllUsers(@Param('nameQuery') nameQuery: string, @Query('page') page: number, @Query('size') size: number) {
+  getAllUsers(@Query('nameQuery') nameQuery: string, @Query('page', ParseIntPipe) page: number, @Query('size', ParseIntPipe) size: number) {
     this.logger.log(`GET /user | Fetching users: nameQuery=${nameQuery}, page=${page}, size=${size}`);
     return this.userService.getAllUsers(nameQuery, page, size);
   }
@@ -65,7 +65,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'ID of the user to delete', type: String })
   deleteUser(@Param('id') id: string) {
     this.logger.log(`DELETE /user/${id} | Deleting user`);
-    if (!validate('id')) {
+    if (!validate(id)) {
       this.logger.warn(`GET /user/${id} | Invalid ID format`);
       throw new BadRequestException('Invalid ID format. Must be a valid UUID.');
     }

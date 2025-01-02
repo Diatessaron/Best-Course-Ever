@@ -1,23 +1,28 @@
-import { IsArray, IsNumber, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class Course {
   @IsUUID()
   _id: string;
 
+  @IsOptional()
   @IsString()
-  name: string;
+  name?: string;
 
+  @IsOptional()
   @IsString()
-  description: string;
+  description?: string;
 
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  tags: string[];
+  tags?: string[];
 
+  @IsOptional()
   @IsNumber()
-  difficultyLevel: number;
+  difficultyLevel?: number;
 
+  @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
-  lectures: string[];
+  lectures?: string[];
 }

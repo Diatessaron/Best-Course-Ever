@@ -10,7 +10,7 @@ import {
   Query,
   Logger,
   Inject,
-  BadRequestException,
+  BadRequestException, ParseIntPipe, HttpCode,
 } from '@nestjs/common';
 import { Course } from '../model/course';
 import { AuthGuard } from '../guard/authGuard';
@@ -39,7 +39,7 @@ export class CourseController {
   @ApiQuery({ name: 'query', description: 'Full-text search query', required: false, type: String })
   @ApiQuery({ name: 'page', description: 'Page number for pagination', required: false, type: Number })
   @ApiQuery({ name: 'size', description: 'Number of items per page', required: false, type: Number })
-  getAllCourses(@Query('query') query: string, @Query("page") page: number, @Query("size") size: number) {
+  getAllCourses(@Query('query') query: string, @Query("page", ParseIntPipe) page: number, @Query("size", ParseIntPipe) size: number) {
     this.logger.log(`GET /course | Fetching courses with query="${query}", page=${page}, size=${size}`);
     return this.courseService.getAllCourses(query, page, size);
   }
@@ -97,6 +97,7 @@ export class CourseController {
     return this.courseService.deleteCourse(id);
   }
 
+  @HttpCode(200)
   @Post(':id/allow')
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
@@ -104,10 +105,10 @@ export class CourseController {
   @ApiParam({ name: 'id', description: 'ID of the course', type: String })
   @ApiQuery({ name: 'userId', description: 'ID of the user to allow access', type: String })
   allowUserAccess(@Param('id') courseId: string, @Query('userId') userId: string) {
-    this.logger.log(`DELETE /course/${courseId}?userId=${userId} | Allow user access`);
+    this.logger.log(`POST /course/${courseId}?userId=${userId} | Allow user access`);
     if (!validate(courseId) || !validate(userId)) {
-      this.logger.warn(`DELETE /course/${courseId}?userId=${userId} | Invalid ID format`);
-      throw new BadRequestException(`DELETE /course/${courseId}?userId=${userId} | Invalid ID format`);
+      this.logger.warn(`POST /course/${courseId}?userId=${userId} | Invalid ID format`);
+      throw new BadRequestException(`POST /course/${courseId}/allow?userId=${userId} | Invalid ID format`);
     }
     return this.courseService.allowUserAccess(courseId, userId)
   }

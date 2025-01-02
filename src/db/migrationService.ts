@@ -22,7 +22,7 @@ export class MigrationService implements OnModuleInit {
   async runMigrations() {
     console.log('Starting migrations...');
 
-    const migrationFiles = readdirSync(this.migrationsDir).filter((file) => file.endsWith('.js'));
+    const migrationFiles = readdirSync(this.migrationsDir).filter((file) => file.endsWith('.ts'));
 
     const executedMigrations = await this.getExecutedMigrations();
 

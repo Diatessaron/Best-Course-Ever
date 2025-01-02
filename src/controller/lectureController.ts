@@ -10,7 +10,7 @@ import {
   Query,
   Logger,
   Inject,
-  BadRequestException,
+  BadRequestException, ParseIntPipe,
 } from '@nestjs/common';
 import { Lecture } from '../model/lecture';
 import { AuthGuard } from '../guard/authGuard';
@@ -39,7 +39,7 @@ export class LectureController {
   @ApiParam({ name: 'courseId', description: 'ID of the course', type: String })
   @ApiQuery({ name: 'page', description: 'Page number for pagination', required: false, type: Number })
   @ApiQuery({ name: 'size', description: 'Number of items per page', required: false, type: Number })
-  getLecturesByCourse(@Param('courseId') courseId: string, @Query("page") page: number, @Query("size") size: number) {
+  getLecturesByCourse(@Param('courseId') courseId: string, @Query("page", ParseIntPipe) page: number, @Query("size", ParseIntPipe) size: number) {
     this.logger.log(`GET /lecture/${courseId} | Fetching lectures for course with pagination: page=${page}, size=${size}`);
     if (!validate(courseId)) {
       this.logger.warn(`GET /lecture/${courseId} | Invalid ID format`);

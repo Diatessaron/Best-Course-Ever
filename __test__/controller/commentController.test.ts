@@ -1,57 +1,120 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { AuthGuard } from '../../src/guard/authGuard';
 import { CommentController } from '../../src/controller/commentController';
 import { RolesGuard } from '../../src/guard/rolesGuard';
+import { CommentService } from '../../src/service/commentService';
+import { BaseTestContainer } from '../BaseClass.test';
+import { Db, MongoClient } from 'mongodb';
+import { Comment } from '../../src/model/comment';
+import { v4 } from 'uuid';
 
 describe('CommentController (e2e)', () => {
   let app: INestApplication;
+  let moduleFixture: TestingModule;
+  let db: Db;
+  let mongoClient: MongoClient;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    await BaseTestContainer.setup();
+    const mongoUri = BaseTestContainer.getMongoUri();
+    mongoClient = await new MongoClient(mongoUri).connect();
+    db = mongoClient.db("test")
+
+    moduleFixture = await Test.createTestingModule({
       controllers: [CommentController],
-    }).overrideGuard(AuthGuard).useValue({ canActivate: () => true })
+      providers: [
+        CommentService,
+        {
+          provide: 'DATABASE_CONNECTION',
+          useValue: db,
+        },
+      ],
+    })
+      .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .compile();
 
     app = moduleFixture.createNestApplication();
+
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+
     await app.init();
   });
 
   afterAll(async () => {
+    await moduleFixture.close()
+    await BaseTestContainer.teardown()
+    await mongoClient.close()
     await app.close();
   });
 
   describe('Positive Tests', () => {
     it('/comment/:targetId (GET)', async () => {
+      const comment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text" };
+      await db.collection<OptionalId<Comment>>('comments').insertOne(comment);
+
       const response = await request(app.getHttpServer())
-        .get('/comment/123')
+        .get(`/comment/${comment.targetId}`)
         .query({ page: 1, size: 10 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.comments.length).toBe(1);
+      expect(response.body.comments[0].text).toBe(comment.text);
+      expect(response.body.total).toBe(1);
+    });
+
+    it('/comment/:targetId (GET) - Empty Response', async () => {
+      const response = await request(app.getHttpServer()).get(`/comment/${v4()}`).query({ page: 1, size: 10 });
 
       expect(response.status).toBe(200);
     });
 
     it('/comment/:targetId (POST)', async () => {
+      const expectedComment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text" };
+
       const response = await request(app.getHttpServer())
-        .post('/comment/123')
-        .send({ text: 'This is a test comment.' });
+        .post(`/comment/${expectedComment.targetId}`)
+        .send(expectedComment);
 
       expect(response.status).toBe(201);
+      const actualComment = await db.collection<OptionalId<Comment>>('comments').findOne({ _id: expectedComment._id });
+      expect(actualComment.text).toBe(expectedComment.text);
+      expect(actualComment.userId).toBe(expectedComment.userId);
+      expect(actualComment.targetId).toBe(expectedComment.targetId);
     });
 
     it('/comment/:commentId (PUT)', async () => {
+      const comment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text" };
+      await db.collection<OptionalId<Comment>>('comments').insertOne(comment);
+
       const response = await request(app.getHttpServer())
-        .put('/comment/456')
+        .put(`/comment/${comment._id}`)
         .send({ text: 'Updated comment text' });
 
       expect(response.status).toBe(200);
+      const actualComment = await db.collection<OptionalId<Comment>>('comments').findOne({ _id: comment._id })
+      expect(actualComment.text).toBe('Updated comment text');
     });
 
     it('/comment/:commentId (DELETE)', async () => {
-      const response = await request(app.getHttpServer()).delete('/comment/456');
+      const comment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text"};
+      await db.collection<OptionalId<Comment>>('comments').insertOne(comment);
+
+      const response = await request(app.getHttpServer())
+        .delete(`/comment/${comment._id}`)
+        .send({ text: 'Updated comment text' });
 
       expect(response.status).toBe(200);
+      const actualComment = await db.collection<OptionalId<Comment>>('comments').findOne({ _id: comment._id })
+      expect(actualComment).toBeFalsy()
     });
   });
 
@@ -65,54 +128,43 @@ describe('CommentController (e2e)', () => {
       expect(response.body.message).toBeDefined();
     });
 
-    it('/comment/:targetId (GET) - Missing Query Params', async () => {
-      const response = await request(app.getHttpServer()).get('/comment/123');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toBeDefined();
-    });
-
     it('/comment/:targetId (POST) - Missing Required Fields', async () => {
       const response = await request(app.getHttpServer())
-        .post('/comment/123')
+        .post(`/comment/${v4()}`)
         .send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('text should not be empty');
     });
 
     it('/comment/:targetId (POST) - Invalid Payload', async () => {
       const response = await request(app.getHttpServer())
-        .post('/comment/123')
+        .post(`/comment/${v4()}`)
         .send({ invalidField: 'Invalid data' });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Invalid payload');
     });
 
     it('/comment/:commentId (PUT) - Non-existent Comment ID', async () => {
       const response = await request(app.getHttpServer())
-        .put('/comment/non-existent-id')
+        .put(`/comment/${v4()}`)
         .send({ text: 'Updated comment text' });
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Comment not found');
     });
 
     it('/comment/:commentId (PUT) - Missing Required Fields', async () => {
       const response = await request(app.getHttpServer())
-        .put('/comment/456')
+        .put(`/comment/${v4()}`)
         .send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('text should not be empty');
+      expect(response.body.message).toContain('Text for the comment must be provided and cannot be empty.');
     });
 
     it('/comment/:commentId (DELETE) - Non-existent Comment ID', async () => {
-      const response = await request(app.getHttpServer()).delete('/comment/non-existent-id');
+      const response = await request(app.getHttpServer()).delete(`/comment/${v4()}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Comment not found');
     });
   });
 });

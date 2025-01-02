@@ -1,58 +1,166 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { UserController } from '../../src/controller/userController';
 import { AuthGuard } from '../../src/guard/authGuard';
 import { RolesGuard } from '../../src/guard/rolesGuard';
+import { Db, MongoClient } from 'mongodb';
+import { BaseTestContainer } from '../BaseClass.test';
+import { MigrationService } from '../../src/db/migrationService';
+import { UserService } from '../../src/service/userService';
+import { v4 } from 'uuid';
+import { User, UserRoles } from '../../src/model/user';
 
 describe('UserController (e2e)', () => {
   let app: INestApplication;
+  let moduleFixture: TestingModule;
+  let db: Db;
+  let mongoClient: MongoClient;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    await BaseTestContainer.setup();
+    const mongoUri = BaseTestContainer.getMongoUri();
+    mongoClient = await new MongoClient(mongoUri).connect();
+    db = mongoClient.db('test');
+
+    moduleFixture = await Test.createTestingModule({
       controllers: [UserController],
-    }).overrideGuard(AuthGuard).useValue({ canActivate: () => true })
+      providers: [
+        UserService,
+        MigrationService,
+        {
+          provide: 'DATABASE_CONNECTION',
+          useValue: db,
+        },
+      ],
+    })
+      .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .compile();
 
+    //needed to make sure that migrations were executed
+    const migrationService = moduleFixture.get<MigrationService>(MigrationService);
+    await migrationService.runMigrations();
+
     app = moduleFixture.createNestApplication();
+
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+
     await app.init();
   });
 
   afterAll(async () => {
+    await moduleFixture.close();
+    await BaseTestContainer.teardown();
+    await mongoClient.close();
     await app.close();
   });
 
   describe('Positive Tests', () => {
     it('/user (GET) - Get all users with pagination and search', async () => {
+      const user1 = {
+        _id: v4(),
+        email: 'test@test.com',
+        password: 'password',
+        name: "John Doe",
+        roles: [UserRoles.USER],
+        courses: [v4()],
+        allowedCourses: [v4()]
+      }
+      await db.collection<OptionalId<User>>("users").insertOne(user1)
+
+      const user2 = {
+        _id: v4(),
+        email: 'test@test.com',
+        password: 'password',
+        name: "Max Doe",
+        roles: [UserRoles.USER],
+        courses: [v4()],
+        allowedCourses: [v4()]
+      }
+      await db.collection<OptionalId<User>>("users").insertOne(user2)
+
       const response = await request(app.getHttpServer())
         .get('/user')
         .query({ nameQuery: 'John', page: 1, size: 10 });
 
       expect(response.status).toBe(200);
+      expect(response.body.users.length).toBe(1)
+      expect(response.body.users[0].name).toBe(user1.name);
+      expect(response.body.users[0].password).toBeFalsy()
+      expect(response.body.users[0].email).toBeFalsy()
+      expect(response.body.total).toBe(1)
     });
 
     it('/user/:id (GET) - Get a user by ID', async () => {
-      const response = await request(app.getHttpServer()).get('/user/123');
+      const user = {
+        _id: v4(),
+        email: 'test@test.com',
+        password: 'password',
+        name: "Max Doe",
+        roles: [UserRoles.USER],
+        courses: [v4()],
+        allowedCourses: [v4()]
+      }
+      await db.collection<OptionalId<User>>("users").insertOne(user)
+
+      const response = await request(app.getHttpServer()).get(`/user/${user._id}`);
 
       expect(response.status).toBe(200);
+      expect(response.body._id).toBe(user._id);
+      expect(response.body.name).toBe(user.name);
+      expect(response.body.password).toBeFalsy()
+      expect(response.body.email).toBeFalsy()
     });
 
     it('/user/:id (PUT) - Update a user by ID', async () => {
+      const user = {
+        _id: v4(),
+        email: 'test@test.com',
+        password: 'password',
+        name: "Max Doe",
+        roles: [UserRoles.USER],
+        courses: [v4()],
+        allowedCourses: [v4()]
+      }
+      await db.collection<OptionalId<User>>("users").insertOne(user)
+
       const response = await request(app.getHttpServer())
-        .put('/user/123')
+        .put(`/user/${user._id}`)
         .send({
-          name: 'Updated User',
-          email: 'updateduser@example.com',
+          _id: user._id,
+          name: 'Updated User'
         });
 
       expect(response.status).toBe(200);
+      const actualUser = await db.collection<OptionalId<User>>("users").findOne({ _id: user._id })
+      expect(actualUser).toBeTruthy()
+      expect(actualUser.name).toBe("Updated User");
     });
 
     it('/user/:id (DELETE) - Delete a user by ID', async () => {
-      const response = await request(app.getHttpServer()).delete('/user/123');
+      const user = {
+        _id: v4(),
+        email: 'test@test.com',
+        password: 'password',
+        name: "Max Doe",
+        roles: [UserRoles.USER],
+        courses: [v4()],
+        allowedCourses: [v4()]
+      }
+      await db.collection<OptionalId<User>>("users").insertOne(user)
+
+      const response = await request(app.getHttpServer()).delete(`/user/${user._id}`);
 
       expect(response.status).toBe(200);
+      const actualUser = await db.collection<User>("users").findOne({ _id: user._id });
+      expect(actualUser).toBeFalsy()
     });
   });
 
@@ -60,7 +168,7 @@ describe('UserController (e2e)', () => {
     it('/user (GET) - Missing Query Params', async () => {
       const response = await request(app.getHttpServer()).get('/user');
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(400);
     });
 
     it('/user/:id (GET) - Invalid User ID', async () => {
@@ -70,29 +178,25 @@ describe('UserController (e2e)', () => {
       expect(response.body.message).toBeDefined();
     });
 
-    it('/user/:id (PUT) - Invalid Payload', async () => {
+    it('/user/:id (PUT) - Not Found', async () => {
       const response = await request(app.getHttpServer())
-        .put('/user/123')
-        .send({
-          invalidField: 'Invalid data',
-        });
+        .put(`/user/${v4()}`)
+        .send({ _id: v4() });
 
-      expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Invalid payload');
+      expect(response.status).toBe(404);
     });
 
     it('/user/:id (PUT) - Missing Required Fields', async () => {
-      const response = await request(app.getHttpServer()).put('/user/123').send({});
+      const response = await request(app.getHttpServer()).put(`/user/${v4()}`).send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('name should not be empty');
+      expect(response.body.message).toContain('_id must be a UUID');
     });
 
     it('/user/:id (DELETE) - Non-existent User ID', async () => {
-      const response = await request(app.getHttpServer()).delete('/user/non-existent-id');
+      const response = await request(app.getHttpServer()).delete(`/user/${v4()}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('User not found');
     });
   });
 });

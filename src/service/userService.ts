@@ -28,7 +28,7 @@ export class UserService {
     const skip = (page - 1) * size;
 
     const [users, total] = await Promise.all([
-      this.userCollection.find(query, { projection: { score: { $meta: 'textScore' } } })
+      this.userCollection.find(query, { projection: { email: 0, password: 0 } })
         .sort({ score: { $meta: 'textScore' } }).skip(skip).limit(size).toArray(),
       this.userCollection.countDocuments(query),
     ]);
@@ -44,7 +44,7 @@ export class UserService {
   async getUserById(id: string): Promise<User> {
     this.logger.log(`Fetching user with ID: ${id}`);
 
-    const user = await this.userCollection.findOne({ _id: id });
+    const user = await this.userCollection.findOne({ _id: id }, { projection: { email: 0, password: 0 } });
 
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);

@@ -12,11 +12,4 @@ export class Comment {
 
   @IsString()
   text: string;
-
-  constructor(id: string, userId: string, targetId: string, text: string) {
-    this._id = id;
-    this.userId = userId;
-    this.targetId = targetId;
-    this.text = text;
-  }
 }

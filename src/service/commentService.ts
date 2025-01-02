@@ -71,7 +71,7 @@ export class CommentService {
   async deleteComment(commentId: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete comment: ID=${commentId}`);
 
-    const result: DeleteResult = await this.commentCollection.deleteOne({ commentId });
+    const result: DeleteResult = await this.commentCollection.deleteOne({ _id: commentId });
 
     if (result.deletedCount === 0) {
       this.logger.warn(`Comment not found: ID=${commentId}`);

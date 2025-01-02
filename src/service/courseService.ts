@@ -30,7 +30,7 @@ export class CourseService {
 
     const searchQuery: any = {};
     if (query) {
-      searchQuery.$text = query;
+      searchQuery.$text = { $search: query };
       this.logger.log(`Performing full-text search with query: "${query}"`);
     }
 
@@ -43,26 +43,19 @@ export class CourseService {
     return { courses, total, page, size };
   }
 
-  async getCourseById(courseId: string): Promise<{ course: Course; lessons: Lecture[] }> {
+  async getCourseById(courseId: string): Promise<Course> {
     this.logger.log(`Fetching course details with ID: ${courseId}`);
 
-    const course = await this.courseCollection.findOne({ _id: courseId });
-    if (!course) {
-      this.logger.warn(`Course not found: ID=${courseId}`);
-      throw new NotFoundException(`Course with ID "${courseId}" not found.`);
-    }
-    const lessons = await this.lectureCollection.find({ courseId }).toArray();
-
-    this.courseCollection.aggregate(
+    const course = (await this.courseCollection.aggregate(
       [
         { $match: { _id: courseId } },
         { $lookup: { from: 'lectures', localField: 'lectures', foreignField: '_id', as: 'tempLectures' } },
         { $project: { name: 1, description: 1, tags: 1, difficultyLevel: 1, lectures: '$tempLectures' } },
       ],
-    );
+    ).toArray())[0] as Course;
 
     this.logger.log(`Course and lessons fetched successfully: ID=${courseId}`);
-    return { course, lessons };
+    return course;
   }
 
   async createCourse(course: Course): Promise<Course> {

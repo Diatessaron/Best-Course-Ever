@@ -5,5 +5,6 @@ module.exports = {
   testRegex: '__test__/.*\\.test\\.ts$',
   transform: {
     '^.+\\.ts$': 'ts-jest',
-  }
+  },
+  testTimeout: 10000,
 };

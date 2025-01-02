@@ -1,29 +1,85 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
+import * as crypto from 'crypto';
 import { AuthController } from '../../src/controller/authController';
+import { Db, MongoClient } from 'mongodb';
+import { BaseTestContainer } from '../BaseClass.test';
+import { MigrationService } from '../../src/db/migrationService';
+import { AuthGuard } from '../../src/guard/authGuard';
+import { RolesGuard } from '../../src/guard/rolesGuard';
+import { AuthService } from '../../src/service/authService';
+import { v4 } from 'uuid';
+import { User, UserRoles } from '../../src/model/user';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
+  let moduleFixture: TestingModule;
+  let db: Db;
+  let mongoClient: MongoClient;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    await BaseTestContainer.setup();
+    const mongoUri = BaseTestContainer.getMongoUri();
+    mongoClient = await new MongoClient(mongoUri).connect();
+    db = mongoClient.db('test');
+
+    moduleFixture = await Test.createTestingModule({
       controllers: [AuthController],
-    }).compile();
+      providers: [
+        AuthService,
+        MigrationService,
+        {
+          provide: 'DATABASE_CONNECTION',
+          useValue: db,
+        },
+      ],
+    })
+      .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
+      .compile();
+
+    //needed to make sure that migrations were executed
+    const migrationService = moduleFixture.get<MigrationService>(MigrationService);
+    await migrationService.runMigrations();
 
     app = moduleFixture.createNestApplication();
+
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+
     await app.init();
   });
 
   afterAll(async () => {
+    await moduleFixture.close();
+    await BaseTestContainer.teardown();
+    await mongoClient.close();
     await app.close();
   });
 
   describe('Positive cases', () => {
     it('/auth/login (POST)', async () => {
+      const user = {
+        _id: v4(),
+        email: 'test@test.com',
+        password: 'password',
+        name: 'John Doe',
+        roles: [UserRoles.USER],
+        courses: [],
+        allowedCourses: []
+      }
+      await db.collection<OptionalId<User>>("users").insertOne(user)
+      const hashedPassword = crypto.createHash('md5').update(user.password).digest('hex')
+
       const response = await request(app.getHttpServer())
         .post('/auth/login')
-        .send({ email: '__test__@example.com', password: 'password123' });
+        .send({ email: 'test@example.com', password: hashedPassword });
 
       expect(response.status).toBe(201);
     });
