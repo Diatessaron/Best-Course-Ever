@@ -6,7 +6,7 @@ export class BaseTestContainer {
 
   static async setup(): Promise<void> {
     if (!this.container) {
-      const container = await new GenericContainer('mongo')
+      const container = new GenericContainer('mongo')
         .withExposedPorts(27017)
         .withPullPolicy(PullPolicy.alwaysPull())
 
