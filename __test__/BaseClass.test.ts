@@ -1,4 +1,4 @@
-import { GenericContainer, StartedTestContainer } from 'testcontainers';
+import { GenericContainer, PullPolicy, StartedTestContainer } from 'testcontainers';
 
 export class BaseTestContainer {
   private static container: StartedTestContainer;
@@ -6,9 +6,11 @@ export class BaseTestContainer {
 
   static async setup(): Promise<void> {
     if (!this.container) {
-      this.container = await new GenericContainer('mongo')
+      const container = await new GenericContainer('mongo')
         .withExposedPorts(27017)
-        .start();
+        .withPullPolicy(PullPolicy.alwaysPull())
+
+      this.container = await container.start();
 
       this.mongoUri = `mongodb://${this.container.getHost()}:${this.container.getFirstMappedPort()}/test`;
     }
