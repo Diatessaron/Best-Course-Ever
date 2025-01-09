@@ -11,7 +11,7 @@ Best Courses Ever is an educational platform with the ability to create, manage 
 $ npm install
 ```
 
-## Compile and run the project
+## Running the project
 
 ```bash
 # development
@@ -21,14 +21,18 @@ $ npm run start
 $ npm run start:dev
 
 # production mode
+npm run build
 $ npm run start:prod
 ```
 
-## Run tests
+## Running tests
 
 ```bash
 # unit tests
 $ npm run test
+
+# Watch mode for tests
+npm run test:watch
 
 # e2e tests
 $ npm run test:e2e
@@ -37,18 +41,29 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+## Linting and Formatting
+To ensure code quality and consistency:
 ```bash
-$ npm install -g mau
-$ mau deploy
+# Lint the code and fix issues
+npm run lint
+
+# Format the code using Prettier
+npm run format
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Deployment
+
+For production deployment, follow these steps:
+
+```bash
+#Build the application
+$ npm run build
+
+#Run the compiled application
+$ npm run start:prod
+```
+
+If deploying to a cloud platform, refer to the official NestJS Deployment Guide.
 
 ## Resources
 
@@ -66,12 +81,6 @@ Check out a few resources that may come in handy when working with NestJS:
 ## Support
 
 Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
 
 ## License
 
