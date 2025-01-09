@@ -1,14 +1,112 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Collection, Db } from 'mongodb';
+import { User } from '../model/user';
+import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
+import { v4 } from 'uuid';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  private userCollection: Collection<User>;
+  private readonly jwtService: JwtService;
+  private blacklistCollection: Collection;
 
   constructor(
-    @Inject('DATABASE_CONNECTION') private readonly db: Db
+    @Inject('DATABASE_CONNECTION') private readonly db: Db,
+    jwtService: JwtService
   ) {
-
+    this.userCollection = db.collection('users');
+    this.blacklistCollection = db.collection('blacklistedTokens');
+    this.jwtService = jwtService;
   }
 
+  async login(email: string, password: string): Promise<{ message: string }> {
+    if (!this.isValidEmail(email)) {
+      throw new BadRequestException('Credentials are not correct');
+    }
+    if (!password) {
+      throw new BadRequestException('Credentials are not correct');
+    }
 
+    const user = await this.userCollection.findOne({ email: email })
+    if (!user) {
+      throw new BadRequestException('Credentials are not correct');
+    }
+    if (user.password !== password) {
+      throw new BadRequestException('Credentials are not correct');
+    }
+
+    const payload = { _id: user._id, email: user.email, roles: user.roles };
+    return { message: this.jwtService.sign(payload, { expiresIn: '7d' }) };
+  }
+
+  async logout(token: string) {
+    const decoded = this.jwtService.decode(token);
+
+    if (decoded && decoded.exp) {
+      const expiry = new Date(decoded.exp * 1000);
+      const currentTime = new Date();
+
+      if (expiry > currentTime) {
+        await this.blacklistCollection.insertOne({
+          token: token,
+          expiresAt: expiry,
+        });
+      }
+    }
+  }
+
+  async signup(user: User): Promise<{ message: string }> {
+    const existingUser = await this.userCollection.findOne({ email: user.email });
+    if (existingUser) {
+      throw new BadRequestException('Email is already registered');
+    }
+    if (!user.email || !user.password || !user.roles || user.roles.length === 0) {
+      throw new BadRequestException('Missing required fields');
+    }
+    if (!this.isStrongPassword(user.password)) {
+      throw new BadRequestException(
+        'Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      );
+    }
+    if (!this.isValidEmail(user.email)) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hashedPassword = crypto.pbkdf2Sync(user.password, salt, 1000, 64, 'sha512').toString('hex');
+
+    const newUser: User = {
+      ...user,
+      _id: v4(),
+      password: hashedPassword,
+      roles: user.roles,
+    };
+
+    await this.userCollection.insertOne(newUser);
+
+    // Generate JWT token
+    const payload = {
+      _id: newUser._id,
+      email: newUser.email,
+      roles: newUser.roles,
+    };
+    return { message: this.jwtService.sign(payload, { expiresIn: '7d' }) };
+  }
+
+  private validateJwtToken(token: string): any {
+    return this.jwtService.verify(token);
+  }
+
+  private isValidEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  private isStrongPassword(password: string): boolean {
+    // Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return passwordRegex.test(password);
+  }
 }

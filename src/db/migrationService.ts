@@ -10,7 +10,9 @@ export class MigrationService implements OnModuleInit {
   private database: Db;
   private migrationCollection: Collection<MigrationDocument>;
 
-  constructor(@Inject('DATABASE_CONNECTION') private readonly db: Db) {
+  constructor(
+    @Inject('DATABASE_CONNECTION') private readonly db: Db
+  ) {
     this.database = db;
     this.migrationCollection = db.collection('migrations');
   }

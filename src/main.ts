@@ -4,7 +4,6 @@ import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
-//todo: improve role-based access control
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

@@ -2,20 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { CourseController } from '../../src/controller/courseController';
-import { AuthGuard } from '../../src/guard/authGuard';
-import { RolesGuard } from '../../src/guard/rolesGuard';
 import { Db, MongoClient } from 'mongodb';
-import { BaseTestContainer } from '../BaseClass.test';
+import { BaseTestContainer } from '../BaseClass';
 import { CourseService } from '../../src/service/courseService';
 import { v4 } from 'uuid';
 import { Course } from '../../src/model/course';
 import { Lecture } from '../../src/model/lecture';
 import { MigrationService } from '../../src/db/migrationService';
-import { User } from '../../src/model/user';
+import { User, UserRoles } from '../../src/model/user';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 
 describe('CourseController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
+  let jwtService: JwtService;
+  let token: string;
   let db: Db;
   let mongoClient: MongoClient;
 
@@ -26,6 +27,12 @@ describe('CourseController (e2e)', () => {
     db = mongoClient.db('test');
 
     moduleFixture = await Test.createTestingModule({
+      imports: [
+        JwtModule.register({
+          secret: 'test-secret',
+          signOptions: { expiresIn: '1h' },
+        })
+      ],
       controllers: [CourseController],
       providers: [
         CourseService,
@@ -36,9 +43,10 @@ describe('CourseController (e2e)', () => {
         },
       ],
     })
-      .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .compile();
+
+    jwtService = moduleFixture.get<JwtService>(JwtService);
+    token = jwtService.sign({ _id: v4(), email: 'test@test.com', roles: [UserRoles.USER] })
 
     //needed to make sure that migrations were executed
     const migrationService = moduleFixture.get<MigrationService>(MigrationService);
@@ -86,7 +94,8 @@ describe('CourseController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/course')
-        .query({ query: 'course', page: 1, size: 10 });
+        .query({ query: 'course', page: 1, size: 10 })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body.courses.length).toBe(1);
@@ -119,7 +128,7 @@ describe('CourseController (e2e)', () => {
       };
       await db.collection<OptionalId<Course>>('courses').insertOne(course);
 
-      const response = await request(app.getHttpServer()).get(`/course/${course._id}`);
+      const response = await request(app.getHttpServer()).get(`/course/${course._id}`).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body.name).toBe('Course');
@@ -143,7 +152,8 @@ describe('CourseController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/course')
-        .send(course);
+        .send(course)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(201);
       const actualCourse = await db.collection<OptionalId<Course>>('courses').findOne({ _id: course._id });
@@ -176,7 +186,8 @@ describe('CourseController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .put(`/course/${course._id}`)
-        .send({ _id: course._id, name: 'Updated Course', description: 'Updated course description' });
+        .send({ _id: course._id, name: 'Updated Course', description: 'Updated course description' })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       const actualCourse = await db.collection<OptionalId<Course>>('courses').findOne({ _id: course._id });
@@ -199,7 +210,7 @@ describe('CourseController (e2e)', () => {
       };
       await db.collection<OptionalId<Course>>('courses').insertOne(course);
 
-      const response = await request(app.getHttpServer()).delete(`/course/${course._id}`);
+      const response = await request(app.getHttpServer()).delete(`/course/${course._id}`).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       const actualCourse = await db.collection<OptionalId<Course>>('courses').findOne({ _id: course._id });
@@ -229,7 +240,8 @@ describe('CourseController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/course/${course._id}/allow`)
-        .query({ userId: `${user._id}` });
+        .query({ userId: `${user._id}` })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       const actualUser = await db.collection<OptionalId<User>>('users').findOne({ _id: user._id });
@@ -241,20 +253,20 @@ describe('CourseController (e2e)', () => {
 
   describe('Negative Tests', () => {
     it('/course (GET) - Missing Query Params', async () => {
-      const response = await request(app.getHttpServer()).get('/course');
+      const response = await request(app.getHttpServer()).get('/course').set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
 
     it('/course/:id (GET) - Invalid ID', async () => {
-      const response = await request(app.getHttpServer()).get('/course/invalid-id');
+      const response = await request(app.getHttpServer()).get('/course/invalid-id').set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBeDefined();
     });
 
     it('/course (POST) - Missing Required Fields', async () => {
-      const response = await request(app.getHttpServer()).post('/course').send({});
+      const response = await request(app.getHttpServer()).post('/course').send({}).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
@@ -262,21 +274,22 @@ describe('CourseController (e2e)', () => {
     it('/course/:id (PUT) - Invalid Payload', async () => {
       const response = await request(app.getHttpServer())
         .put('/course/123')
-        .send({ invalidField: 'Invalid data' });
+        .send({ invalidField: 'Invalid data' })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
 
     it('/course/:id (DELETE) - Non-existent ID', async () => {
       const id = v4();
-      const response = await request(app.getHttpServer()).delete(`/course/${id}`);
+      const response = await request(app.getHttpServer()).delete(`/course/${id}`).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
       expect(response.body.message).toBe(`Course with ID "${id}" not found.`);
     });
 
     it('/course/:id/allow (POST) - Missing userId Query Param', async () => {
-      const response = await request(app.getHttpServer()).post('/course/123/allow?userId=id');
+      const response = await request(app.getHttpServer()).post('/course/123/allow?userId=id').set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('POST /course/123/allow?userId=id | Invalid ID format');
