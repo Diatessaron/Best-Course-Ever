@@ -2,19 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { LectureController } from '../../src/controller/lectureController';
-import { AuthGuard } from '../../src/guard/authGuard';
-import { RolesGuard } from '../../src/guard/rolesGuard';
 import { Db, MongoClient } from 'mongodb';
-import { BaseTestContainer } from '../BaseClass.test';
+import { BaseTestContainer } from '../BaseClass';
 import { MigrationService } from '../../src/db/migrationService';
 import { LectureService } from '../../src/service/lectureService';
 import { v4 } from 'uuid';
 import { Lecture } from '../../src/model/lecture';
 import { Course } from '../../src/model/course';
+import { JwtModule, JwtService } from '@nestjs/jwt';
+import { UserRoles } from '../../src/model/user';
 
 describe('LectureController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
+  let jwtService: JwtService;
+  let token: string;
   let db: Db;
   let mongoClient: MongoClient;
 
@@ -25,6 +27,12 @@ describe('LectureController (e2e)', () => {
     db = mongoClient.db('test');
 
     moduleFixture = await Test.createTestingModule({
+      imports: [
+        JwtModule.register({
+          secret: 'test-secret',
+          signOptions: { expiresIn: '1h' },
+        })
+      ],
       controllers: [LectureController],
       providers: [
         LectureService,
@@ -35,9 +43,10 @@ describe('LectureController (e2e)', () => {
         },
       ],
     })
-      .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .compile();
+
+    jwtService = moduleFixture.get<JwtService>(JwtService);
+    token = jwtService.sign({ _id: v4(), email: 'test@test.com', roles: [UserRoles.USER] })
 
     //needed to make sure that migrations were executed
     const migrationService = moduleFixture.get<MigrationService>(MigrationService);
@@ -85,7 +94,8 @@ describe('LectureController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/lecture/${course._id}`)
-        .query({ page: 1, size: 10 });
+        .query({ page: 1, size: 10 })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body.total).toBe(1);
@@ -116,7 +126,7 @@ describe('LectureController (e2e)', () => {
       };
       await db.collection<OptionalId<Course>>('courses').insertOne(course);
 
-      const response = await request(app.getHttpServer()).get(`/lecture/${course._id}/${lecture._id}`);
+      const response = await request(app.getHttpServer()).get(`/lecture/${course._id}/${lecture._id}`).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body._id).toBe(lecture._id)
@@ -145,7 +155,8 @@ describe('LectureController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/lecture/${course._id}`)
-        .send(lecture);
+        .send(lecture)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(201);
 
@@ -177,7 +188,8 @@ describe('LectureController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .put(`/lecture/${course._id}/${lecture._id}`)
-        .send({ _id: lecture._id, description: 'Updated Description' });
+        .send({ _id: lecture._id, description: 'Updated Description' })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
 
@@ -205,7 +217,7 @@ describe('LectureController (e2e)', () => {
       };
       await db.collection<OptionalId<Course>>('courses').insertOne(course);
 
-      const response = await request(app.getHttpServer()).delete(`/lecture/${course._id}/${lecture._id}`);
+      const response = await request(app.getHttpServer()).delete(`/lecture/${course._id}/${lecture._id}`).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
 
@@ -216,27 +228,27 @@ describe('LectureController (e2e)', () => {
 
   describe('Negative Tests', () => {
     it('/lecture/:courseId (GET) - Missing Query Params', async () => {
-      const response = await request(app.getHttpServer()).get('/lecture/123');
+      const response = await request(app.getHttpServer()).get('/lecture/123').set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
 
     it('/lecture/:courseId (GET) - Invalid Course ID', async () => {
-      const response = await request(app.getHttpServer()).get('/lecture/invalid-id');
+      const response = await request(app.getHttpServer()).get('/lecture/invalid-id').set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBeDefined();
     });
 
     it('/lecture/:courseId/:lectureId (GET) - Invalid Lecture ID', async () => {
-      const response = await request(app.getHttpServer()).get('/lecture/123/invalid-id');
+      const response = await request(app.getHttpServer()).get('/lecture/123/invalid-id').set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBeDefined();
     });
 
     it('/lecture/:courseId (POST) - Missing Required Fields', async () => {
-      const response = await request(app.getHttpServer()).post(`/lecture/${v4()}`).send({});
+      const response = await request(app.getHttpServer()).post(`/lecture/${v4()}`).send({}).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
@@ -244,13 +256,14 @@ describe('LectureController (e2e)', () => {
     it('/lecture/:courseId/:lectureId (PUT) - Not found', async () => {
       const response = await request(app.getHttpServer())
         .put(`/lecture/${v4()}/${v4()}`)
-        .send({ _id: v4() });
+        .send({ _id: v4() })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
     });
 
     it('/lecture/:courseId/:lectureId (DELETE) - Non-existent Lecture ID', async () => {
-      const response = await request(app.getHttpServer()).delete(`/lecture/${v4()}/${v4()}`);
+      const response = await request(app.getHttpServer()).delete(`/lecture/${v4()}/${v4()}`).set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
     });

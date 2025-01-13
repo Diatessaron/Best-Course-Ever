@@ -9,4 +9,11 @@ export default async function (database: Db) {
   );
 
   console.log('Text index on "name" field created successfully.');
+
+  await usersCollection.createIndex(
+    { email: 1 },
+    { unique: true }
+  )
+
+  console.log('Unique index on "email" field created successfully.');
 };

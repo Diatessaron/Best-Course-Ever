@@ -17,9 +17,16 @@ import { FileService } from './service/fileService';
 import { LectureService } from './service/lectureService';
 import { MigrationService } from './db/migrationService';
 import { FileController } from './controller/fileController';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
-  imports: [MongoDBModule],
+  imports: [
+    MongoDBModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '7d' },
+    })
+  ],
   controllers: [
     CommentController,
     CourseController,

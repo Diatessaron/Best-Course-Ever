@@ -1,7 +1,8 @@
-import { Controller, Post, Body, Logger, Inject } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Inject, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { User } from '../model/user';
 import { AuthService } from '../service/authService';
+import { AuthGuard } from '../guard/authGuard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -13,6 +14,7 @@ export class AuthController {
     this.authService = authService
   }
 
+  @HttpCode(HttpStatus.OK)
   @Post('login')
   @ApiOperation({ summary: 'Authenticate user and return a JWT' })
   @ApiBody({
@@ -24,20 +26,26 @@ export class AuthController {
       },
     },
   })
-  login(@Body() credentials: { email: string; password: string }) {
-    // todo: authenticates a user and returns a jwt
+  login(@Body() credentials: { email: string, password: string }) {
+    this.logger.log('POST /login | Authenticating user with credentials')
+    //returns JWT
+    return this.authService.login(credentials.email, credentials.password);
   }
 
+  @HttpCode(HttpStatus.OK)
   @Post('logout')
+  @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Log out the current user' })
-  logout() {
-    // todo: logs out the current user
+  logout(@Req() req) {
+    this.logger.log('POST /logout');
+    return this.authService.logout(req.token);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create a new user' })
   @ApiBody({ type: User })
   signup(@Body() user: User) {
-    // todo: creates a new user
+    this.logger.log('POST /signup')
+    return this.authService.signup(user);
   }
 }

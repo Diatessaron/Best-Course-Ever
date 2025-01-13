@@ -2,18 +2,20 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { SurveyController } from '../../src/controller/surveyController';
-import { AuthGuard } from '../../src/guard/authGuard';
-import { RolesGuard } from '../../src/guard/rolesGuard';
 import { Db, MongoClient } from 'mongodb';
-import { BaseTestContainer } from '../BaseClass.test';
+import { BaseTestContainer } from '../BaseClass';
 import { MigrationService } from '../../src/db/migrationService';
 import { SurveyService } from '../../src/service/surveyService';
 import { v4 } from 'uuid';
 import { Survey, SurveyType } from '../../src/model/survey';
+import { JwtModule, JwtService } from '@nestjs/jwt';
+import { UserRoles } from '../../src/model/user';
 
 describe('SurveyController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
+  let jwtService: JwtService;
+  let token: string;
   let db: Db;
   let mongoClient: MongoClient;
 
@@ -24,6 +26,12 @@ describe('SurveyController (e2e)', () => {
     db = mongoClient.db('test');
 
     moduleFixture = await Test.createTestingModule({
+      imports: [
+        JwtModule.register({
+          secret: 'test-secret',
+          signOptions: { expiresIn: '1h' },
+        })
+      ],
       controllers: [SurveyController],
       providers: [
         SurveyService,
@@ -34,9 +42,10 @@ describe('SurveyController (e2e)', () => {
         },
       ],
     })
-      .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .compile();
+
+    jwtService = moduleFixture.get<JwtService>(JwtService);
+    token = jwtService.sign({ _id: v4(), email: 'test@test.com', roles: [UserRoles.USER] })
 
     //needed to make sure that migrations were executed
     const migrationService = moduleFixture.get<MigrationService>(MigrationService);
@@ -74,7 +83,8 @@ describe('SurveyController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/survey/${survey.targetId}`)
-        .send(survey);
+        .send(survey)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(201);
 
@@ -95,7 +105,8 @@ describe('SurveyController (e2e)', () => {
           _id: v4(),
           type: "INTERESTING",
           rank: 'not-a-number',
-        });
+        })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('rank must be an integer number');
@@ -107,7 +118,8 @@ describe('SurveyController (e2e)', () => {
         .send({
           difficultyRank: 4,
           interestingRank: 5,
-        });
+        })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBeDefined();
@@ -120,7 +132,8 @@ describe('SurveyController (e2e)', () => {
           _id: v4(),
           type: SurveyType.DIFFICULT,
           rank: 6,
-        });
+        })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('rank must not be greater than 5');
