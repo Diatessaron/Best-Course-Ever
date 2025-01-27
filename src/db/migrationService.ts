@@ -24,7 +24,9 @@ export class MigrationService implements OnModuleInit {
   async runMigrations() {
     console.log('Starting migrations...');
 
-    const migrationFiles = readdirSync(this.migrationsDir).filter((file) => file.endsWith('.ts'));
+    const migrationFiles = readdirSync(this.migrationsDir).filter((file) => file.endsWith(
+      process.env.NODE_ENV === 'production' ? '.js' : '.ts'
+    ));
 
     const executedMigrations = await this.getExecutedMigrations();
 
@@ -51,6 +53,8 @@ export class MigrationService implements OnModuleInit {
     const { default: migrationFunction } = await import(migrationPath);
 
     if (typeof migrationFunction !== 'function') {
+      console.log('function - ' + migrationFunction);
+      console.log('path - ' + migrationPath);
       throw new Error(`Migration file ${fileName} does not export a default function.`);
     }
 
