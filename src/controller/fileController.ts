@@ -9,9 +9,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileService } from '../service/fileService';
-import { AuthGuard } from '../guard/authGuard';
-import { Roles } from '../guard/roles';
-import { RolesGuard } from '../guard/rolesGuard';
+import { AuthGuard } from '../common/guard/authGuard';
+import { Roles } from '../common/guard/roles';
+import { RolesGuard } from '../common/guard/rolesGuard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 

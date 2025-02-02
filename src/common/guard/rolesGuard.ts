@@ -1,13 +1,14 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { UserContextService } from '../../service/UserContextService';
+import { UserRoles } from '../../model/user';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
-
   constructor(
-    private reflector: Reflector,
-  ) {
-  }
+    private readonly reflector: Reflector,
+    private readonly userContextService: UserContextService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.get<string[]>('roles', context.getHandler());
@@ -15,14 +16,13 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const user = this.userContextService.getUser();
 
-    if (!user || !user.roles) {
+    if (!user?.roles) {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    const hasRole = requiredRoles.some((role) => user.roles.includes(role));
+    const hasRole = requiredRoles.some((role) => user.roles.includes(UserRoles[role as keyof typeof UserRoles]));
     if (!hasRole) {
       throw new ForbiddenException('Access denied');
     }

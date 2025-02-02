@@ -2,19 +2,23 @@ import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common'
 import { Collection, Db } from 'mongodb';
 import { User } from '../model/user';
 import { JwtService } from '@nestjs/jwt';
-import * as crypto from 'crypto';
 import { v4 } from 'uuid';
+import { promisify } from 'util';
+import { pbkdf2, randomBytes } from 'crypto';
+
+const randomBytesAsync = promisify(randomBytes);
+const pbkdf2Async = promisify(pbkdf2)
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private userCollection: Collection<User>;
+  private readonly userCollection: Collection<User>;
   private readonly jwtService: JwtService;
-  private blacklistCollection: Collection;
+  private readonly blacklistCollection: Collection;
 
   constructor(
     @Inject('DATABASE_CONNECTION') private readonly db: Db,
-    jwtService: JwtService
+    jwtService: JwtService,
   ) {
     this.userCollection = db.collection('users');
     this.blacklistCollection = db.collection('blacklistedTokens');
@@ -29,11 +33,19 @@ export class AuthService {
       throw new BadRequestException('Credentials are not correct');
     }
 
-    const user = await this.userCollection.findOne({ email: email })
-    if (!user) {
+    const user = await this.userCollection.findOne({ email: email }, {
+      projection: {
+        salt: 1,
+        _id: 1,
+        email: 1,
+        password: 1,
+        roles: 1,
+      },
+    }) as User & { salt?: string } | null;
+    if (!user || !user.salt) {
       throw new BadRequestException('Credentials are not correct');
     }
-    if (user.password !== password) {
+    if ((await this.hashPassword(password, user.salt)) !== user.password) {
       throw new BadRequestException('Credentials are not correct');
     }
 
@@ -74,14 +86,15 @@ export class AuthService {
       throw new BadRequestException('Invalid email address');
     }
 
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hashedPassword = crypto.pbkdf2Sync(user.password, salt, 1000, 64, 'sha512').toString('hex');
+    const salt = await randomBytesAsync(16).then(rs => rs.toString('hex'));
+    const hashedPassword = await this.hashPassword(user.password, salt);
 
-    const newUser: User = {
+    const newUser = {
       ...user,
       _id: v4(),
       password: hashedPassword,
       roles: user.roles,
+      salt: salt
     };
 
     await this.userCollection.insertOne(newUser);
@@ -108,5 +121,9 @@ export class AuthService {
     // Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     return passwordRegex.test(password);
+  }
+
+  private async hashPassword(password: string, salt: string): Promise<string> {
+    return pbkdf2Async(password, salt, 1000, 64, 'sha512').then(rs => rs.toString('hex'));
   }
 }

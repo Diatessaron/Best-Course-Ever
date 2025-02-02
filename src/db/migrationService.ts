@@ -3,6 +3,7 @@ import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { join } from 'path';
 import { readdirSync } from 'fs';
 import { MigrationDocument } from './migrationDocument';
+import * as process from 'node:process';
 
 @Injectable()
 export class MigrationService implements OnModuleInit {
@@ -25,7 +26,7 @@ export class MigrationService implements OnModuleInit {
     console.log('Starting migrations...');
 
     const migrationFiles = readdirSync(this.migrationsDir).filter((file) => file.endsWith(
-      process.env.NODE_ENV === 'production' ? '.js' : '.ts'
+      process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'dev' ? '.js' : '.ts'
     ));
 
     const executedMigrations = await this.getExecutedMigrations();

@@ -10,6 +10,7 @@ import { AuthService } from '../../src/service/authService';
 import { v4 } from 'uuid';
 import { User, UserRoles } from '../../src/model/user';
 import { JwtModule, JwtService } from '@nestjs/jwt';
+import { UserContextService } from '../../src/service/UserContextService';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -33,6 +34,7 @@ describe('AuthController (e2e)', () => {
       ],
       controllers: [AuthController],
       providers: [
+        UserContextService,
         AuthService,
         MigrationService,
         {
@@ -75,10 +77,11 @@ describe('AuthController (e2e)', () => {
 
   describe('Positive cases', () => {
     it('/auth/login (POST)', async () => {
+      const password = 'password';
       const user = {
         _id: v4(),
         email: 'test@test.com',
-        password: 'password',
+        password: password,
         name: 'John Doe',
         roles: [UserRoles.USER],
         courses: [],
@@ -87,13 +90,12 @@ describe('AuthController (e2e)', () => {
 
       const salt = crypto.randomBytes(16).toString('hex');
       const hashedPassword = crypto.pbkdf2Sync(user.password, salt, 1000, 64, 'sha512').toString('hex');
-      user.password = hashedPassword;
 
-      await db.collection<OptionalId<User>>("users").insertOne(user);
+      await db.collection<OptionalId<User>>("users").insertOne(Object.assign({}, user, { password: hashedPassword, salt: salt }));
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
-        .send({ email: 'test@test.com', password: hashedPassword });
+        .send({ email: 'test@test.com', password: password });
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message');
@@ -119,14 +121,13 @@ describe('AuthController (e2e)', () => {
 
       const salt = crypto.randomBytes(16).toString('hex');
       const hashedPassword = crypto.pbkdf2Sync(user.password, salt, 1000, 64, 'sha512').toString('hex');
-      user.password = hashedPassword;
 
-      await db.collection<OptionalId<User>>("users").insertOne(user);
+      await db.collection<OptionalId<User>>("users").insertOne(Object.assign({}, user, { password: hashedPassword, salt: salt }));
 
       //login
       let response = await request(app.getHttpServer())
         .post('/auth/login')
-        .send({ email: 'test@test.com', password: hashedPassword });
+        .send({ email: 'test@test.com', password: user.password });
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message');
@@ -143,10 +144,11 @@ describe('AuthController (e2e)', () => {
     });
 
     it('/auth/signup (POST)', async () => {
+      const password = 'jrb*4RNW';
       const user = {
         _id: v4(),
         email: 'test@test.com',
-        password: 'jrb*4RNW',
+        password: password,
         roles: [UserRoles.USER],
         courses: [],
         allowedCourses: []
@@ -166,9 +168,11 @@ describe('AuthController (e2e)', () => {
       expect(payload.email).toBe(user.email);
       expect(payload.roles).toEqual(user.roles);
 
-      const actualUsers = await db.collection('users').find().toArray();
+      const actualUsers = await db.collection('users').find<User & { salt?: string }>({}).toArray();
       expect(actualUsers).toBeDefined()
       expect(actualUsers.length).toBe(1);
+      expect(actualUsers[0].password !== password).toBeTruthy()
+      expect(actualUsers[0].salt).toBeDefined()
     });
   });
 

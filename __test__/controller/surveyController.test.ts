@@ -10,6 +10,7 @@ import { v4 } from 'uuid';
 import { Survey, SurveyType } from '../../src/model/survey';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { UserRoles } from '../../src/model/user';
+import { UserContextService } from '../../src/service/UserContextService';
 
 describe('SurveyController (e2e)', () => {
   let app: INestApplication;
@@ -34,6 +35,7 @@ describe('SurveyController (e2e)', () => {
       ],
       controllers: [SurveyController],
       providers: [
+        UserContextService,
         SurveyService,
         MigrationService,
         {

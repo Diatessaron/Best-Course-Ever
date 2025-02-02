@@ -9,6 +9,7 @@ import { Comment } from '../../src/model/comment';
 import { v4 } from 'uuid';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { UserRoles } from '../../src/model/user';
+import { UserContextService } from '../../src/service/UserContextService';
 
 describe('CommentController (e2e)', () => {
   let app: INestApplication;
@@ -33,6 +34,7 @@ describe('CommentController (e2e)', () => {
       ],
       controllers: [CommentController],
       providers: [
+        UserContextService,
         CommentService,
         {
           provide: 'DATABASE_CONNECTION',

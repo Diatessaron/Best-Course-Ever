@@ -2,13 +2,14 @@ import { Controller, Post, Body, Logger, Inject, UseGuards, Req, HttpCode, HttpS
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { User } from '../model/user';
 import { AuthService } from '../service/authService';
-import { AuthGuard } from '../guard/authGuard';
+import { AuthGuard } from '../common/guard/authGuard';
+import { Token } from '../common/decorator/TokenDecorator';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  private logger: Logger = new Logger(AuthController.name);
-  private authService: AuthService;
+  private readonly logger: Logger = new Logger(AuthController.name);
+  private readonly authService: AuthService;
 
   constructor(@Inject() authService: AuthService) {
     this.authService = authService
@@ -36,9 +37,9 @@ export class AuthController {
   @Post('logout')
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Log out the current user' })
-  logout(@Req() req) {
+  logout(@Token() token: string) {
     this.logger.log('POST /logout');
-    return this.authService.logout(req.token);
+    return this.authService.logout(token);
   }
 
   @Post()
