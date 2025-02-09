@@ -13,9 +13,9 @@ import {
   BadRequestException, ParseIntPipe,
 } from '@nestjs/common';
 import { Lecture } from '../model/lecture';
-import { AuthGuard } from '../guard/authGuard';
-import { RolesGuard } from '../guard/rolesGuard';
-import { Roles } from '../guard/roles';
+import { AuthGuard } from '../common/guard/authGuard';
+import { RolesGuard } from '../common/guard/rolesGuard';
+import { Roles } from '../common/guard/roles';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { LectureService } from '../service/lectureService';
 import { validate } from 'uuid';

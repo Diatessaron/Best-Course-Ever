@@ -2,9 +2,9 @@ import {
   Controller, Get, Put, Delete, Param, Body, UseGuards, Query, Inject, BadRequestException, Logger, ParseIntPipe,
 } from '@nestjs/common';
 import { User } from '../model/user';
-import { AuthGuard } from '../guard/authGuard';
-import { Roles } from '../guard/roles';
-import { RolesGuard } from '../guard/rolesGuard';
+import { AuthGuard } from '../common/guard/authGuard';
+import { Roles } from '../common/guard/roles';
+import { RolesGuard } from '../common/guard/rolesGuard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UserService } from '../service/userService';
 import { validate } from 'uuid';
@@ -15,7 +15,7 @@ import { validate } from 'uuid';
 @UseGuards(AuthGuard)
 export class UserController {
   private readonly logger = new Logger(UserController.name);
-  private userService: UserService;
+  private readonly userService: UserService;
 
   constructor(@Inject() userService: UserService) {
     this.userService = userService;

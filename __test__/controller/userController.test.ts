@@ -9,6 +9,7 @@ import { UserService } from '../../src/service/userService';
 import { v4 } from 'uuid';
 import { User, UserRoles } from '../../src/model/user';
 import { JwtModule, JwtService } from '@nestjs/jwt';
+import { UserContextService } from '../../src/service/UserContextService';
 
 describe('UserController (e2e)', () => {
   let app: INestApplication;
@@ -33,6 +34,7 @@ describe('UserController (e2e)', () => {
       ],
       controllers: [UserController],
       providers: [
+        UserContextService,
         UserService,
         MigrationService,
         {

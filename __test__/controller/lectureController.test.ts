@@ -11,6 +11,7 @@ import { Lecture } from '../../src/model/lecture';
 import { Course } from '../../src/model/course';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { UserRoles } from '../../src/model/user';
+import { UserContextService } from '../../src/service/UserContextService';
 
 describe('LectureController (e2e)', () => {
   let app: INestApplication;
@@ -35,6 +36,7 @@ describe('LectureController (e2e)', () => {
       ],
       controllers: [LectureController],
       providers: [
+        UserContextService,
         LectureService,
         MigrationService,
         {

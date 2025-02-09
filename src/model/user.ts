@@ -1,11 +1,21 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export enum UserRoles {
-  USER = "USER",
-  ADMIN = "ADMIN",
-  AUTHOR = "AUTHOR"
+  USER = 'USER',
+  ADMIN = 'ADMIN',
+  AUTHOR = 'AUTHOR'
 }
 
+//User model in DB has 'salt' param and it's omitted here for security reasons
 export class User {
   @IsUUID()
   _id: string;

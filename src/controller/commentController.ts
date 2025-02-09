@@ -13,9 +13,9 @@ import {
   BadRequestException, ParseIntPipe,
 } from '@nestjs/common';
 import { Comment } from '../model/comment'
-import { RolesGuard } from '../guard/rolesGuard';
-import { AuthGuard } from '../guard/authGuard';
-import { Roles } from '../guard/roles';
+import { RolesGuard } from '../common/guard/rolesGuard';
+import { AuthGuard } from '../common/guard/authGuard';
+import { Roles } from '../common/guard/roles';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CommentService } from '../service/commentService';
 import { validate } from 'uuid';

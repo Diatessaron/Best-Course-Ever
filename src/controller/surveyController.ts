@@ -1,8 +1,8 @@
 import { Controller, Post, Param, Body, UseGuards, Logger, Inject, BadRequestException } from '@nestjs/common';
 import { Survey } from '../model/survey';
-import { AuthGuard } from '../guard/authGuard';
-import { Roles } from '../guard/roles';
-import { RolesGuard } from '../guard/rolesGuard';
+import { AuthGuard } from '../common/guard/authGuard';
+import { Roles } from '../common/guard/roles';
+import { RolesGuard } from '../common/guard/rolesGuard';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { SurveyService } from '../service/surveyService';
 import { validate } from 'uuid';
