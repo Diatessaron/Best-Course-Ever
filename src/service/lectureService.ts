@@ -8,6 +8,7 @@ import { Lecture } from '../model/lecture';
 import { Course } from '../model/course';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class LectureService {
@@ -20,6 +21,7 @@ export class LectureService {
     private readonly courseRepository: Repository<Course>,
   ) {}
 
+  @Transactional()
   async getLecturesByCourse(
     courseId: string,
     page: number = 1,
@@ -59,6 +61,7 @@ export class LectureService {
     };
   }
 
+  @Transactional()
   async getLectureById(courseId: string, lectureId: string): Promise<Lecture> {
     this.logger.log(
       `Fetching lecture by ID: courseId=${courseId}, lectureId=${lectureId}`,
@@ -77,6 +80,7 @@ export class LectureService {
     return lecture;
   }
 
+  @Transactional()
   async createLecture(courseId: string, lecture: Lecture): Promise<Lecture> {
     this.logger.log(
       `Creating a new lecture for course ID: ${courseId}, data: ${JSON.stringify(lecture)}`,
@@ -103,6 +107,7 @@ export class LectureService {
     return insertedLecture;
   }
 
+  @Transactional()
   async updateLecture(
     courseId: string,
     lectureId: string,
@@ -121,6 +126,7 @@ export class LectureService {
     return lecture;
   }
 
+  @Transactional()
   async deleteLecture(
     courseId: string,
     lectureId: string,

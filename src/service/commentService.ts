@@ -7,6 +7,7 @@ import {
 import { Comment } from '../model/comment';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class CommentService {
@@ -17,6 +18,7 @@ export class CommentService {
     private readonly commentRepository: Repository<Comment>,
   ) {}
 
+  @Transactional()
   async getComments(
     targetId: string,
     page: number = 1,
@@ -45,6 +47,7 @@ export class CommentService {
     return { comments, total, page, size };
   }
 
+  @Transactional()
   async addComment(
     targetId: string,
     comment: Partial<Comment>,
@@ -58,6 +61,7 @@ export class CommentService {
     return savedComment;
   }
 
+  @Transactional()
   async updateComment(commentId: string, text: string): Promise<Comment> {
     this.logger.log(`Updating comment: ID=${commentId}, text="${text}"`);
 
@@ -86,6 +90,7 @@ export class CommentService {
     return updatedComment;
   }
 
+  @Transactional()
   async deleteComment(commentId: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete comment: ID=${commentId}`);
 

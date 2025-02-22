@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Survey } from '../model/survey';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class SurveyService {
@@ -12,6 +13,7 @@ export class SurveyService {
     private readonly surveyRepository: Repository<Survey>,
   ) {}
 
+  @Transactional()
   async addSurvey(targetId: string, survey: Survey): Promise<Survey> {
     this.logger.log(`Adding survey for target ID: ${targetId}`);
 

@@ -4,6 +4,7 @@ import { In, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../model/user';
 import { Lecture } from '../model/lecture';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class CourseService {
@@ -18,6 +19,7 @@ export class CourseService {
     private readonly lectureRepository: Repository<Lecture>,
   ) {}
 
+  @Transactional()
   async getAllCourses(
     query: string = '',
     page: number = 1,
@@ -51,6 +53,7 @@ export class CourseService {
     return { courses, total, page, size };
   }
 
+  @Transactional()
   async getCourseById(courseId: string): Promise<Course> {
     this.logger.log(`Fetching course details with ID: ${courseId}`);
 
@@ -76,6 +79,7 @@ export class CourseService {
     return course;
   }
 
+  @Transactional()
   async createCourse(course: Course): Promise<Course> {
     this.logger.log(
       `Creating a new course with data: ${JSON.stringify(course)}`,
@@ -87,6 +91,7 @@ export class CourseService {
     return savedCourse;
   }
 
+  @Transactional()
   async updateCourse(
     courseId: string,
     course: Partial<Course>,
@@ -112,6 +117,7 @@ export class CourseService {
     return result.raw[0];
   }
 
+  @Transactional()
   async deleteCourse(courseId: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete course with ID: ${courseId}`);
 
@@ -126,6 +132,7 @@ export class CourseService {
     return { message: `Course with ID "${courseId}" has been deleted.` };
   }
 
+  @Transactional()
   async allowUserAccess(
     courseId: string,
     userId: string,

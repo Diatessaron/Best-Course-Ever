@@ -4,6 +4,7 @@ import { v4 } from 'uuid';
 import { Lecture } from '../model/lecture';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class FileService {
@@ -14,6 +15,7 @@ export class FileService {
     private readonly lectureRepository: Repository<Lecture>,
   ) {}
 
+  @Transactional()
   async saveFile(
     lectureId: string,
     file: Express.Multer.File,

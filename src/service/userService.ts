@@ -7,6 +7,7 @@ import {
 import { User } from '../model/user';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class UserService {
@@ -16,6 +17,7 @@ export class UserService {
     @InjectRepository(User) private readonly userRepository: Repository<User>,
   ) {}
 
+  @Transactional()
   async getAllUsers(
     nameQuery: string,
     page: number = 1,
@@ -59,6 +61,7 @@ export class UserService {
     return { users, total, page, size };
   }
 
+  @Transactional()
   async getUserById(id: string): Promise<User> {
     this.logger.log(`Fetching user with ID: ${id}`);
 
@@ -75,6 +78,7 @@ export class UserService {
     return user;
   }
 
+  @Transactional()
   async updateUser(id: string, userUpdates: Partial<User>): Promise<User> {
     this.logger.log(`Updating user with ID: ${id}`);
 
@@ -96,6 +100,7 @@ export class UserService {
     return updatedUser;
   }
 
+  @Transactional()
   async deleteUser(id: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete user with ID: ${id}`);
 

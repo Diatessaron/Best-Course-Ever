@@ -7,6 +7,7 @@ import { pbkdf2, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BlacklistedToken } from '../model/blacklistedToken';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 const randomBytesAsync = promisify(randomBytes);
 const pbkdf2Async = promisify(pbkdf2);
@@ -23,6 +24,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
+  @Transactional()
   async login(email: string, password: string): Promise<{ message: string }> {
     if (!this.isValidEmail(email)) {
       throw new BadRequestException('Credentials are not correct');
@@ -48,6 +50,7 @@ export class AuthService {
     return { message: this.jwtService.sign(payload, { expiresIn: '7d' }) };
   }
 
+  @Transactional()
   async logout(token: string) {
     const decoded = this.jwtService.decode(token);
 
@@ -65,6 +68,7 @@ export class AuthService {
     }
   }
 
+  @Transactional()
   async signup(userData: Partial<User>): Promise<{ message: string }> {
     const existingUser = await this.userRepository.findOne({
       where: { email: userData.email },
