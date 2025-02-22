@@ -8,17 +8,25 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - mongodb
+      - postgres
     environment:
-      - MONGO_DB_URI=mongodb://mongodb:27017/bestCourse
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=bestCourse
 
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=bestCourse
     ports:
-      - "27018:27017"
+      - "5432:5432"
     volumes:
-      - mongodb_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
 
   nginx:
     image: nginx:stable-alpine
@@ -32,4 +40,4 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf
 
 volumes:
-  mongodb_data:
+  postgres_data:
