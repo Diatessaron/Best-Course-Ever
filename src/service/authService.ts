@@ -1,30 +1,30 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { Collection, Db } from 'mongodb';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { User } from '../model/user';
 import { JwtService } from '@nestjs/jwt';
 import { v4 } from 'uuid';
 import { promisify } from 'util';
 import { pbkdf2, randomBytes } from 'crypto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { BlacklistedToken } from '../model/blacklistedToken';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 const randomBytesAsync = promisify(randomBytes);
-const pbkdf2Async = promisify(pbkdf2)
+const pbkdf2Async = promisify(pbkdf2);
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly userCollection: Collection<User>;
-  private readonly jwtService: JwtService;
-  private readonly blacklistCollection: Collection;
 
   constructor(
-    @Inject('DATABASE_CONNECTION') private readonly db: Db,
-    jwtService: JwtService,
-  ) {
-    this.userCollection = db.collection('users');
-    this.blacklistCollection = db.collection('blacklistedTokens');
-    this.jwtService = jwtService;
-  }
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(BlacklistedToken)
+    private readonly blacklistRepository: Repository<BlacklistedToken>,
+    private readonly jwtService: JwtService,
+  ) {}
 
+  @Transactional()
   async login(email: string, password: string): Promise<{ message: string }> {
     if (!this.isValidEmail(email)) {
       throw new BadRequestException('Credentials are not correct');
@@ -33,26 +33,24 @@ export class AuthService {
       throw new BadRequestException('Credentials are not correct');
     }
 
-    const user = await this.userCollection.findOne({ email: email }, {
-      projection: {
-        salt: 1,
-        _id: 1,
-        email: 1,
-        password: 1,
-        roles: 1,
-      },
-    }) as User & { salt?: string } | null;
+    const user = await this.userRepository.findOne({
+      where: { email },
+      select: ['_id', 'email', 'password', 'roles', 'salt'],
+    });
+
     if (!user || !user.salt) {
       throw new BadRequestException('Credentials are not correct');
     }
+
     if ((await this.hashPassword(password, user.salt)) !== user.password) {
       throw new BadRequestException('Credentials are not correct');
     }
 
-    const payload = { _id: user._id, email: user.email, roles: user.roles };
+    const payload = { id: user._id, email: user.email, roles: user.roles };
     return { message: this.jwtService.sign(payload, { expiresIn: '7d' }) };
   }
 
+  @Transactional()
   async logout(token: string) {
     const decoded = this.jwtService.decode(token);
 
@@ -61,55 +59,63 @@ export class AuthService {
       const currentTime = new Date();
 
       if (expiry > currentTime) {
-        await this.blacklistCollection.insertOne({
+        const blacklistedToken = this.blacklistRepository.create({
           token: token,
           expiresAt: expiry,
         });
+        await this.blacklistRepository.save(blacklistedToken);
       }
     }
   }
 
-  async signup(user: User): Promise<{ message: string }> {
-    const existingUser = await this.userCollection.findOne({ email: user.email });
+  @Transactional()
+  async signup(userData: Partial<User>): Promise<{ message: string }> {
+    const existingUser = await this.userRepository.findOne({
+      where: { email: userData.email },
+    });
+
     if (existingUser) {
       throw new BadRequestException('Email is already registered');
     }
-    if (!user.email || !user.password || !user.roles || user.roles.length === 0) {
+
+    if (
+      !userData.email ||
+      !userData.password ||
+      !userData.roles ||
+      userData.roles.length === 0
+    ) {
       throw new BadRequestException('Missing required fields');
     }
-    if (!this.isStrongPassword(user.password)) {
+
+    if (!this.isStrongPassword(userData.password)) {
       throw new BadRequestException(
         'Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character',
       );
     }
-    if (!this.isValidEmail(user.email)) {
+
+    if (!this.isValidEmail(userData.email)) {
       throw new BadRequestException('Invalid email address');
     }
 
-    const salt = await randomBytesAsync(16).then(rs => rs.toString('hex'));
-    const hashedPassword = await this.hashPassword(user.password, salt);
+    const salt = await randomBytesAsync(16).then((rs) => rs.toString('hex'));
+    const hashedPassword = await this.hashPassword(userData.password, salt);
 
-    const newUser = {
-      ...user,
+    const user = this.userRepository.create({
+      ...userData,
       _id: v4(),
       password: hashedPassword,
-      roles: user.roles,
-      salt: salt
-    };
+      salt: salt,
+    });
 
-    await this.userCollection.insertOne(newUser);
+    await this.userRepository.save(user);
 
     // Generate JWT token
     const payload = {
-      _id: newUser._id,
-      email: newUser.email,
-      roles: newUser.roles,
+      id: user._id,
+      email: user.email,
+      roles: user.roles,
     };
     return { message: this.jwtService.sign(payload, { expiresIn: '7d' }) };
-  }
-
-  private validateJwtToken(token: string): any {
-    return this.jwtService.verify(token);
   }
 
   private isValidEmail(email: string): boolean {
@@ -119,11 +125,14 @@ export class AuthService {
 
   private isStrongPassword(password: string): boolean {
     // Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     return passwordRegex.test(password);
   }
 
   private async hashPassword(password: string, salt: string): Promise<string> {
-    return pbkdf2Async(password, salt, 1000, 64, 'sha512').then(rs => rs.toString('hex'));
+    return pbkdf2Async(password, salt, 1000, 64, 'sha512').then((rs) =>
+      rs.toString('hex'),
+    );
   }
 }

@@ -3,52 +3,52 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import * as crypto from 'crypto';
 import { AuthController } from '../../src/controller/authController';
-import { Db, MongoClient } from 'mongodb';
 import { BaseTestContainer } from '../BaseClass';
 import { MigrationService } from '../../src/db/migrationService';
 import { AuthService } from '../../src/service/authService';
 import { v4 } from 'uuid';
 import { User, UserRoles } from '../../src/model/user';
 import { JwtModule, JwtService } from '@nestjs/jwt';
-import { UserContextService } from '../../src/service/UserContextService';
+import { UserContextService } from '../../src/service/userContextService';
+import { DataSource } from 'typeorm';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MigrationDocument } from '../../src/db/migrationDocument';
+import { BlacklistedToken } from '../../src/model/blacklistedToken';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
   let jwtService: JwtService;
-  let db: Db;
-  let mongoClient: MongoClient;
+  let dataSource: DataSource;
 
   beforeAll(async () => {
     await BaseTestContainer.setup();
-    const mongoUri = BaseTestContainer.getMongoUri();
-    mongoClient = await new MongoClient(mongoUri).connect();
-    db = mongoClient.db('test');
+    const databaseUri = BaseTestContainer.getDatabaseUri();
 
     moduleFixture = await Test.createTestingModule({
       imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: databaseUri,
+          entities: [User, MigrationDocument, BlacklistedToken],
+          synchronize: true,
+        }),
+        TypeOrmModule.forFeature([User, MigrationDocument, BlacklistedToken]),
         JwtModule.register({
           secret: 'test-secret',
           signOptions: { expiresIn: '1h' },
-        })
+        }),
       ],
       controllers: [AuthController],
-      providers: [
-        UserContextService,
-        AuthService,
-        MigrationService,
-        {
-          provide: 'DATABASE_CONNECTION',
-          useValue: db,
-        },
-      ],
-    })
-      .compile();
+      providers: [UserContextService, AuthService, MigrationService],
+    }).compile();
 
     jwtService = moduleFixture.get<JwtService>(JwtService);
+    dataSource = moduleFixture.get<DataSource>(DataSource);
 
     //needed to make sure that migrations were executed
-    const migrationService = moduleFixture.get<MigrationService>(MigrationService);
+    const migrationService =
+      moduleFixture.get<MigrationService>(MigrationService);
     await migrationService.runMigrations();
 
     app = moduleFixture.createNestApplication();
@@ -67,13 +67,12 @@ describe('AuthController (e2e)', () => {
   afterAll(async () => {
     await moduleFixture.close();
     await BaseTestContainer.teardown();
-    await mongoClient.close();
     await app.close();
   });
 
   afterEach(async () => {
-    await db.collection('users').deleteMany({});
-  })
+    await dataSource.query('TRUNCATE TABLE "users" CASCADE');
+  });
 
   describe('Positive cases', () => {
     it('/auth/login (POST)', async () => {
@@ -85,13 +84,19 @@ describe('AuthController (e2e)', () => {
         name: 'John Doe',
         roles: [UserRoles.USER],
         courses: [],
-        allowedCourses: []
+        allowedCourses: [],
       };
 
       const salt = crypto.randomBytes(16).toString('hex');
-      const hashedPassword = crypto.pbkdf2Sync(user.password, salt, 1000, 64, 'sha512').toString('hex');
+      const hashedPassword = crypto
+        .pbkdf2Sync(user.password, salt, 1000, 64, 'sha512')
+        .toString('hex');
 
-      await db.collection<OptionalId<User>>("users").insertOne(Object.assign({}, user, { password: hashedPassword, salt: salt }));
+      await dataSource
+        .getRepository(User)
+        .save(
+          Object.assign({}, user, { password: hashedPassword, salt: salt }),
+        );
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
@@ -116,13 +121,19 @@ describe('AuthController (e2e)', () => {
         name: 'John Doe',
         roles: [UserRoles.USER],
         courses: [],
-        allowedCourses: []
+        allowedCourses: [],
       };
 
       const salt = crypto.randomBytes(16).toString('hex');
-      const hashedPassword = crypto.pbkdf2Sync(user.password, salt, 1000, 64, 'sha512').toString('hex');
+      const hashedPassword = crypto
+        .pbkdf2Sync(user.password, salt, 1000, 64, 'sha512')
+        .toString('hex');
 
-      await db.collection<OptionalId<User>>("users").insertOne(Object.assign({}, user, { password: hashedPassword, salt: salt }));
+      await dataSource
+        .getRepository(User)
+        .save(
+          Object.assign({}, user, { password: hashedPassword, salt: salt }),
+        );
 
       //login
       let response = await request(app.getHttpServer())
@@ -135,10 +146,14 @@ describe('AuthController (e2e)', () => {
       const token = response.body.message;
 
       //logout
-      response = await request(app.getHttpServer()).post('/auth/logout').set('Authorization', `Bearer ${token}`);
+      response = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${token}`);
       expect(response.status).toBe(200);
 
-      const blacklistedTokens = await db.collection('blacklistedTokens').find().toArray();
+      const blacklistedTokens = await dataSource
+        .getRepository(BlacklistedToken)
+        .find();
       expect(blacklistedTokens).toBeDefined();
       expect(blacklistedTokens.length).toBe(1);
     });
@@ -151,8 +166,8 @@ describe('AuthController (e2e)', () => {
         password: password,
         roles: [UserRoles.USER],
         courses: [],
-        allowedCourses: []
-      }
+        allowedCourses: [],
+      };
 
       const response = await request(app.getHttpServer())
         .post('/auth')
@@ -168,11 +183,11 @@ describe('AuthController (e2e)', () => {
       expect(payload.email).toBe(user.email);
       expect(payload.roles).toEqual(user.roles);
 
-      const actualUsers = await db.collection('users').find<User & { salt?: string }>({}).toArray();
-      expect(actualUsers).toBeDefined()
+      const actualUsers = await dataSource.getRepository(User).find();
+      expect(actualUsers).toBeDefined();
       expect(actualUsers.length).toBe(1);
-      expect(actualUsers[0].password !== password).toBeTruthy()
-      expect(actualUsers[0].salt).toBeDefined()
+      expect(actualUsers[0].password !== password).toBeTruthy();
+      expect(actualUsers[0].salt).toBeDefined();
     });
   });
 
@@ -230,15 +245,17 @@ describe('AuthController (e2e)', () => {
         password: '123',
         roles: [UserRoles.USER],
         courses: [],
-        allowedCourses: []
-      }
+        allowedCourses: [],
+      };
 
       const response = await request(app.getHttpServer())
         .post('/auth')
         .send(user);
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character');
+      expect(response.body.message).toContain(
+        'Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      );
     });
 
     it('/auth/logout (POST) - Not Logged In', async () => {

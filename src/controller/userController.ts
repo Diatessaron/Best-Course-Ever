@@ -1,11 +1,29 @@
 import {
-  Controller, Get, Put, Delete, Param, Body, UseGuards, Query, Inject, BadRequestException, Logger, ParseIntPipe,
+  Controller,
+  Get,
+  Put,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  Query,
+  Inject,
+  BadRequestException,
+  Logger,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { User } from '../model/user';
 import { AuthGuard } from '../common/guard/authGuard';
 import { Roles } from '../common/guard/roles';
 import { RolesGuard } from '../common/guard/rolesGuard';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserService } from '../service/userService';
 import { validate } from 'uuid';
 
@@ -22,12 +40,35 @@ export class UserController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get a list of all users with pagination and search' })
-  @ApiQuery({ name: 'nameQuery', description: 'Name query for full-text search', required: false, type: String })
-  @ApiQuery({ name: 'page', description: 'Page number for pagination', required: false, type: Number })
-  @ApiQuery({ name: 'size', description: 'Number of items per page', required: false, type: Number })
-  getAllUsers(@Query('nameQuery') nameQuery: string, @Query('page', ParseIntPipe) page: number, @Query('size', ParseIntPipe) size: number) {
-    this.logger.log(`GET /user | Fetching users: nameQuery=${nameQuery}, page=${page}, size=${size}`);
+  @ApiOperation({
+    summary: 'Get a list of all users with pagination and search',
+  })
+  @ApiQuery({
+    name: 'nameQuery',
+    description: 'Name query for full-text search',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'page',
+    description: 'Page number for pagination',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'size',
+    description: 'Number of items per page',
+    required: false,
+    type: Number,
+  })
+  getAllUsers(
+    @Query('nameQuery') nameQuery: string,
+    @Query('page', ParseIntPipe) page: number,
+    @Query('size', ParseIntPipe) size: number,
+  ) {
+    this.logger.log(
+      `GET /user | Fetching users: nameQuery=${nameQuery}, page=${page}, size=${size}`,
+    );
     return this.userService.getAllUsers(nameQuery, page, size);
   }
 
@@ -47,10 +88,16 @@ export class UserController {
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Update user information by ID' })
-  @ApiParam({ name: 'id', description: 'ID of the user to update', type: String })
+  @ApiParam({
+    name: 'id',
+    description: 'ID of the user to update',
+    type: String,
+  })
   @ApiBody({ description: 'Updated user information', type: User })
   updateUser(@Param('id') id: string, @Body() user: User) {
-    this.logger.log(`PUT /user/${id} | Updating user with data: ${JSON.stringify(user)}`);
+    this.logger.log(
+      `PUT /user/${id} | Updating user with data: ${JSON.stringify(user)}`,
+    );
     if (!validate(id)) {
       this.logger.warn(`GET /user/${id} | Invalid ID format`);
       throw new BadRequestException('Invalid ID format. Must be a valid UUID.');
@@ -62,7 +109,11 @@ export class UserController {
   @Roles('USER', 'ADMIN', 'AUTHOR')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Delete a user by ID' })
-  @ApiParam({ name: 'id', description: 'ID of the user to delete', type: String })
+  @ApiParam({
+    name: 'id',
+    description: 'ID of the user to delete',
+    type: String,
+  })
   deleteUser(@Param('id') id: string) {
     this.logger.log(`DELETE /user/${id} | Deleting user`);
     if (!validate(id)) {
