@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { CourseController } from '../../src/controller/courseController';
-import { Db, MongoClient } from 'mongodb';
 import { BaseTestContainer } from '../BaseClass';
 import { CourseService } from '../../src/service/courseService';
 import { v4 } from 'uuid';
@@ -11,47 +10,64 @@ import { Lecture } from '../../src/model/lecture';
 import { MigrationService } from '../../src/db/migrationService';
 import { User, UserRoles } from '../../src/model/user';
 import { JwtModule, JwtService } from '@nestjs/jwt';
-import { UserContextService } from '../../src/service/UserContextService';
+import { UserContextService } from '../../src/service/userContextService';
+import { DataSource } from 'typeorm';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MigrationDocument } from '../../src/db/migrationDocument';
+import { BlacklistedToken } from '../../src/model/blacklistedToken';
 
 describe('CourseController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
   let jwtService: JwtService;
   let token: string;
-  let db: Db;
-  let mongoClient: MongoClient;
+  let dataSource: DataSource;
 
   beforeAll(async () => {
     await BaseTestContainer.setup();
-    const mongoUri = BaseTestContainer.getMongoUri();
-    mongoClient = await new MongoClient(mongoUri).connect();
-    db = mongoClient.db('test');
+    const databaseUri = BaseTestContainer.getDatabaseUri();
 
     moduleFixture = await Test.createTestingModule({
       imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: databaseUri,
+          entities: [
+            User,
+            Lecture,
+            Course,
+            MigrationDocument,
+            BlacklistedToken,
+          ],
+          synchronize: true,
+        }),
+        TypeOrmModule.forFeature([
+          User,
+          Lecture,
+          Course,
+          MigrationDocument,
+          BlacklistedToken,
+        ]),
         JwtModule.register({
           secret: 'test-secret',
           signOptions: { expiresIn: '1h' },
-        })
+        }),
       ],
       controllers: [CourseController],
-      providers: [
-        UserContextService,
-        CourseService,
-        MigrationService,
-        {
-          provide: 'DATABASE_CONNECTION',
-          useValue: db,
-        },
-      ],
-    })
-      .compile();
+      providers: [UserContextService, CourseService, MigrationService],
+    }).compile();
 
     jwtService = moduleFixture.get<JwtService>(JwtService);
-    token = jwtService.sign({ _id: v4(), email: 'test@test.com', roles: [UserRoles.USER] })
+    token = jwtService.sign({
+      _id: v4(),
+      email: 'test@test.com',
+      roles: [UserRoles.USER],
+    });
+    dataSource = moduleFixture.get<DataSource>(DataSource);
 
     //needed to make sure that migrations were executed
-    const migrationService = moduleFixture.get<MigrationService>(MigrationService);
+    const migrationService =
+      moduleFixture.get<MigrationService>(MigrationService);
     await migrationService.runMigrations();
 
     app = moduleFixture.createNestApplication();
@@ -70,8 +86,13 @@ describe('CourseController (e2e)', () => {
   afterAll(async () => {
     await moduleFixture.close();
     await BaseTestContainer.teardown();
-    await mongoClient.close();
     await app.close();
+  });
+
+  afterEach(async () => {
+    await dataSource.query('TRUNCATE TABLE "lectures" CASCADE');
+    await dataSource.query('TRUNCATE TABLE "courses" CASCADE');
+    await dataSource.query('TRUNCATE TABLE "users" CASCADE');
   });
 
   describe('Positive Tests', () => {
@@ -80,9 +101,9 @@ describe('CourseController (e2e)', () => {
         _id: v4(),
         name: 'lecture1',
         description: 'lecture1 description',
-        files: []
-      }
-      await db.collection<OptionalId<Lecture>>('lectures').insertOne(lecture);
+        files: [],
+      };
+      await dataSource.getRepository(Lecture).save(lecture);
 
       const course = {
         _id: v4(),
@@ -90,9 +111,9 @@ describe('CourseController (e2e)', () => {
         description: 'description',
         tags: ['frontend', 'design'],
         difficultyLevel: 2,
-        lectures: [ lecture._id ],
+        lectures: [lecture._id],
       };
-      await db.collection<OptionalId<Course>>('courses').insertOne(course);
+      await dataSource.getRepository(Course).save(course);
 
       const response = await request(app.getHttpServer())
         .get('/course')
@@ -106,9 +127,9 @@ describe('CourseController (e2e)', () => {
       expect(response.body.courses[0].difficultyLevel).toBe(2);
       expect(response.body.courses[0].lectures.length).toBe(1);
       expect(response.body.courses[0].tags.length).toBe(2);
-      expect(response.body.total).toBe(1)
-      expect(response.body.page).toBe(1)
-      expect(response.body.size).toBe(10)
+      expect(response.body.total).toBe(1);
+      expect(response.body.page).toBe(1);
+      expect(response.body.size).toBe(10);
     });
 
     it('/course/:id (GET)', async () => {
@@ -116,9 +137,9 @@ describe('CourseController (e2e)', () => {
         _id: v4(),
         name: 'lecture1',
         description: 'lecture1 description',
-        files: []
-      }
-      await db.collection<OptionalId<Lecture>>('lectures').insertOne(lecture);
+        files: [],
+      };
+      await dataSource.getRepository(Lecture).save(lecture);
 
       const course = {
         _id: v4(),
@@ -126,11 +147,13 @@ describe('CourseController (e2e)', () => {
         description: 'description',
         tags: ['frontend', 'design'],
         difficultyLevel: 2,
-        lectures: [ lecture._id ],
+        lectures: [lecture._id],
       };
-      await db.collection<OptionalId<Course>>('courses').insertOne(course);
+      await dataSource.getRepository(Course).save(course);
 
-      const response = await request(app.getHttpServer()).get(`/course/${course._id}`).set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .get(`/course/${course._id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body.name).toBe('Course');
@@ -158,8 +181,10 @@ describe('CourseController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(201);
-      const actualCourse = await db.collection<OptionalId<Course>>('courses').findOne({ _id: course._id });
-      expect(actualCourse).toBeTruthy()
+      const actualCourse = await dataSource.getRepository(Course).findOne({
+        where: { _id: course._id },
+      });
+      expect(actualCourse).toBeTruthy();
       expect(actualCourse.name).toBe('Course');
       expect(actualCourse.description).toBe('description');
       expect(actualCourse.difficultyLevel).toBe(2);
@@ -172,9 +197,9 @@ describe('CourseController (e2e)', () => {
         _id: v4(),
         name: 'lecture1',
         description: 'lecture1 description',
-        files: []
-      }
-      await db.collection<OptionalId<Lecture>>('lectures').insertOne(lecture);
+        files: [],
+      };
+      await dataSource.getRepository(Lecture).save(lecture);
 
       const course = {
         _id: v4(),
@@ -182,18 +207,24 @@ describe('CourseController (e2e)', () => {
         description: 'description',
         tags: ['frontend', 'design'],
         difficultyLevel: 2,
-        lectures: [ lecture._id ],
+        lectures: [lecture._id],
       };
-      await db.collection<OptionalId<Course>>('courses').insertOne(course);
+      await dataSource.getRepository(Course).save(course);
 
       const response = await request(app.getHttpServer())
         .put(`/course/${course._id}`)
-        .send({ _id: course._id, name: 'Updated Course', description: 'Updated course description' })
+        .send({
+          _id: course._id,
+          name: 'Updated Course',
+          description: 'Updated course description',
+        })
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      const actualCourse = await db.collection<OptionalId<Course>>('courses').findOne({ _id: course._id });
-      expect(actualCourse).toBeTruthy()
+      const actualCourse = await dataSource.getRepository(Course).findOne({
+        where: { _id: course._id },
+      });
+      expect(actualCourse).toBeTruthy();
       expect(actualCourse.name).toBe('Updated Course');
       expect(actualCourse.description).toBe('Updated course description');
       expect(actualCourse.difficultyLevel).toBe(2);
@@ -210,13 +241,17 @@ describe('CourseController (e2e)', () => {
         difficultyLevel: 2,
         lectures: [],
       };
-      await db.collection<OptionalId<Course>>('courses').insertOne(course);
+      await dataSource.getRepository(Course).save(course);
 
-      const response = await request(app.getHttpServer()).delete(`/course/${course._id}`).set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .delete(`/course/${course._id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      const actualCourse = await db.collection<OptionalId<Course>>('courses').findOne({ _id: course._id });
-      expect(actualCourse).toBeFalsy()
+      const actualCourse = await dataSource.getRepository(Course).findOne({
+        where: { _id: course._id },
+      });
+      expect(actualCourse).toBeFalsy();
     });
 
     it('/course/:id/allow (POST)', async () => {
@@ -228,7 +263,7 @@ describe('CourseController (e2e)', () => {
         difficultyLevel: 2,
         lectures: [],
       };
-      await db.collection<OptionalId<Course>>('courses').insertOne(course);
+      await dataSource.getRepository(Course).save(course);
       const user = {
         _id: v4(),
         email: 'email@email.com',
@@ -236,9 +271,9 @@ describe('CourseController (e2e)', () => {
         name: 'name',
         roles: [],
         courses: [],
-        allowedCourses: []
-      }
-      await db.collection<OptionalId<User>>('users').insertOne(user);
+        allowedCourses: [],
+      };
+      await dataSource.getRepository(User).save(user);
 
       const response = await request(app.getHttpServer())
         .post(`/course/${course._id}/allow`)
@@ -246,8 +281,10 @@ describe('CourseController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      const actualUser = await db.collection<OptionalId<User>>('users').findOne({ _id: user._id });
-      expect(actualUser).toBeTruthy()
+      const actualUser = await dataSource.getRepository(User).findOne({
+        where: { _id: user._id },
+      });
+      expect(actualUser).toBeTruthy();
       expect(actualUser.allowedCourses.length).toBe(1);
       expect(actualUser.allowedCourses[0]).toBe(course._id);
     });
@@ -255,20 +292,27 @@ describe('CourseController (e2e)', () => {
 
   describe('Negative Tests', () => {
     it('/course (GET) - Missing Query Params', async () => {
-      const response = await request(app.getHttpServer()).get('/course').set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .get('/course')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
 
     it('/course/:id (GET) - Invalid ID', async () => {
-      const response = await request(app.getHttpServer()).get('/course/invalid-id').set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .get('/course/invalid-id')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
       expect(response.body.message).toBeDefined();
     });
 
     it('/course (POST) - Missing Required Fields', async () => {
-      const response = await request(app.getHttpServer()).post('/course').send({}).set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .post('/course')
+        .send({})
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
     });
@@ -284,17 +328,23 @@ describe('CourseController (e2e)', () => {
 
     it('/course/:id (DELETE) - Non-existent ID', async () => {
       const id = v4();
-      const response = await request(app.getHttpServer()).delete(`/course/${id}`).set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .delete(`/course/${id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
       expect(response.body.message).toBe(`Course with ID "${id}" not found.`);
     });
 
     it('/course/:id/allow (POST) - Missing userId Query Param', async () => {
-      const response = await request(app.getHttpServer()).post('/course/123/allow?userId=id').set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .post('/course/123/allow?userId=id')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('POST /course/123/allow?userId=id | Invalid ID format');
+      expect(response.body.message).toContain(
+        'POST /course/123/allow?userId=id | Invalid ID format',
+      );
     });
   });
 });

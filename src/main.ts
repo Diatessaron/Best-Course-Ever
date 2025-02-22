@@ -3,12 +3,20 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { AppDataSource } from './db/data-source';
 
 async function bootstrap() {
+  await AppDataSource.initialize();
   const app = await NestFactory.create(AppModule);
 
-  dotenv.config()
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  dotenv.config();
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   //swagger
   const config = new DocumentBuilder()

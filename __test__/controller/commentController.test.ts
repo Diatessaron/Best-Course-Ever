@@ -4,48 +4,56 @@ import * as request from 'supertest';
 import { CommentController } from '../../src/controller/commentController';
 import { CommentService } from '../../src/service/commentService';
 import { BaseTestContainer } from '../BaseClass';
-import { Db, MongoClient } from 'mongodb';
 import { Comment } from '../../src/model/comment';
 import { v4 } from 'uuid';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { UserRoles } from '../../src/model/user';
-import { UserContextService } from '../../src/service/UserContextService';
+import { UserContextService } from '../../src/service/userContextService';
+import { DataSource } from 'typeorm';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MigrationDocument } from '../../src/db/migrationDocument';
+import { BlacklistedToken } from '../../src/model/blacklistedToken';
 
 describe('CommentController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
   let jwtService: JwtService;
   let token: string;
-  let db: Db;
-  let mongoClient: MongoClient;
+  let dataSource: DataSource;
 
   beforeAll(async () => {
     await BaseTestContainer.setup();
-    const mongoUri = BaseTestContainer.getMongoUri();
-    mongoClient = await new MongoClient(mongoUri).connect();
-    db = mongoClient.db("test")
+    const databaseUri = BaseTestContainer.getDatabaseUri();
 
     moduleFixture = await Test.createTestingModule({
       imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: databaseUri,
+          entities: [Comment, MigrationDocument, BlacklistedToken],
+          synchronize: true,
+        }),
+        TypeOrmModule.forFeature([
+          Comment,
+          MigrationDocument,
+          BlacklistedToken,
+        ]),
         JwtModule.register({
           secret: 'test-secret',
           signOptions: { expiresIn: '1h' },
-        })
+        }),
       ],
       controllers: [CommentController],
-      providers: [
-        UserContextService,
-        CommentService,
-        {
-          provide: 'DATABASE_CONNECTION',
-          useValue: db,
-        },
-      ],
-    })
-      .compile();
+      providers: [UserContextService, CommentService],
+    }).compile();
 
     jwtService = moduleFixture.get<JwtService>(JwtService);
-    token = jwtService.sign({ _id: v4(), email: 'test@test.com', roles: [UserRoles.USER] })
+    token = jwtService.sign({
+      _id: v4(),
+      email: 'test@test.com',
+      roles: [UserRoles.USER],
+    });
+    dataSource = moduleFixture.get<DataSource>(DataSource);
 
     app = moduleFixture.createNestApplication();
 
@@ -61,16 +69,24 @@ describe('CommentController (e2e)', () => {
   });
 
   afterAll(async () => {
-    await moduleFixture.close()
-    await BaseTestContainer.teardown()
-    await mongoClient.close()
+    await moduleFixture.close();
+    await BaseTestContainer.teardown();
     await app.close();
+  });
+
+  afterEach(async () => {
+    await dataSource.query('TRUNCATE TABLE "comments" CASCADE');
   });
 
   describe('Positive Tests', () => {
     it('/comment/:targetId (GET)', async () => {
-      const comment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text" };
-      await db.collection<OptionalId<Comment>>('comments').insertOne(comment);
+      const comment = {
+        _id: v4(),
+        userId: v4(),
+        targetId: v4(),
+        text: 'comment text',
+      };
+      await dataSource.getRepository(Comment).save(comment);
 
       const response = await request(app.getHttpServer())
         .get(`/comment/${comment.targetId}`)
@@ -84,13 +100,21 @@ describe('CommentController (e2e)', () => {
     });
 
     it('/comment/:targetId (GET) - Empty Response', async () => {
-      const response = await request(app.getHttpServer()).get(`/comment/${v4()}`).query({ page: 1, size: 10 }).set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .get(`/comment/${v4()}`)
+        .query({ page: 1, size: 10 })
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
     });
 
     it('/comment/:targetId (POST)', async () => {
-      const expectedComment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text" };
+      const expectedComment = {
+        _id: v4(),
+        userId: v4(),
+        targetId: v4(),
+        text: 'comment text',
+      };
 
       const response = await request(app.getHttpServer())
         .post(`/comment/${expectedComment.targetId}`)
@@ -98,15 +122,22 @@ describe('CommentController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(201);
-      const actualComment = await db.collection<OptionalId<Comment>>('comments').findOne({ _id: expectedComment._id });
+      const actualComment = await dataSource.getRepository(Comment).findOne({
+        where: { _id: expectedComment._id },
+      });
       expect(actualComment.text).toBe(expectedComment.text);
       expect(actualComment.userId).toBe(expectedComment.userId);
       expect(actualComment.targetId).toBe(expectedComment.targetId);
     });
 
     it('/comment/:commentId (PUT)', async () => {
-      const comment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text" };
-      await db.collection<OptionalId<Comment>>('comments').insertOne(comment);
+      const comment = {
+        _id: v4(),
+        userId: v4(),
+        targetId: v4(),
+        text: 'comment text',
+      };
+      await dataSource.getRepository(Comment).save(comment);
 
       const response = await request(app.getHttpServer())
         .put(`/comment/${comment._id}`)
@@ -114,13 +145,20 @@ describe('CommentController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      const actualComment = await db.collection<OptionalId<Comment>>('comments').findOne({ _id: comment._id })
+      const actualComment = await dataSource.getRepository(Comment).findOne({
+        where: { _id: comment._id },
+      });
       expect(actualComment.text).toBe('Updated comment text');
     });
 
     it('/comment/:commentId (DELETE)', async () => {
-      const comment = { _id: v4(), userId: v4(), targetId: v4(), text: "comment text"};
-      await db.collection<OptionalId<Comment>>('comments').insertOne(comment);
+      const comment = {
+        _id: v4(),
+        userId: v4(),
+        targetId: v4(),
+        text: 'comment text',
+      };
+      await dataSource.getRepository(Comment).save(comment);
 
       const response = await request(app.getHttpServer())
         .delete(`/comment/${comment._id}`)
@@ -128,8 +166,10 @@ describe('CommentController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      const actualComment = await db.collection<OptionalId<Comment>>('comments').findOne({ _id: comment._id })
-      expect(actualComment).toBeFalsy()
+      const actualComment = await dataSource.getRepository(Comment).findOne({
+        where: { _id: comment._id },
+      });
+      expect(actualComment).toBeFalsy();
     });
   });
 
@@ -178,11 +218,15 @@ describe('CommentController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Text for the comment must be provided and cannot be empty.');
+      expect(response.body.message).toContain(
+        'Text for the comment must be provided and cannot be empty.',
+      );
     });
 
     it('/comment/:commentId (DELETE) - Non-existent Comment ID', async () => {
-      const response = await request(app.getHttpServer()).delete(`/comment/${v4()}`).set('Authorization', `Bearer ${token}`);
+      const response = await request(app.getHttpServer())
+        .delete(`/comment/${v4()}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
     });

@@ -1,29 +1,32 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { Collection, Db, InsertOneResult } from 'mongodb';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Survey } from '../model/survey';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class SurveyService {
   private readonly logger = new Logger(SurveyService.name);
-  private surveyCollection: Collection<Survey>
 
   constructor(
-    @Inject('DATABASE_CONNECTION') private readonly db: Db
-  ) {
-    this.surveyCollection = db.collection('surveys')
-  }
+    @InjectRepository(Survey)
+    private readonly surveyRepository: Repository<Survey>,
+  ) {}
 
   async addSurvey(targetId: string, survey: Survey): Promise<Survey> {
     this.logger.log(`Adding survey for target ID: ${targetId}`);
 
-      const result: InsertOneResult<Survey> = await this.surveyCollection.insertOne(survey);
+    survey.targetId = targetId;
 
-      if (!result.acknowledged) {
-        this.logger.error('Failed to insert survey into the database.');
-        throw new BadRequestException('Failed to add survey.');
-      }
-
-      this.logger.log(`Survey added successfully with ID: ${result.insertedId}`);
-      return survey;
+    try {
+      const savedSurvey = await this.surveyRepository.save(survey);
+      this.logger.log(`Survey added successfully with ID: ${savedSurvey._id}`);
+      return savedSurvey;
+    } catch (error) {
+      this.logger.error(
+        'Failed to insert survey into the database.',
+        error.stack,
+      );
+      throw new BadRequestException('Failed to add survey.');
+    }
   }
 }

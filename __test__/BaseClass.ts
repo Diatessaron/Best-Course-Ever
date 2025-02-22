@@ -1,33 +1,40 @@
-import { GenericContainer, PullPolicy, StartedTestContainer } from 'testcontainers';
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { PullPolicy } from 'testcontainers';
 
 export class BaseTestContainer {
-  private static container: StartedTestContainer;
-  private static mongoUri: string;
+  private static container: StartedPostgreSqlContainer;
+  private static postgresUri: string;
 
   static async setup(): Promise<void> {
     if (!this.container) {
-      const container = new GenericContainer('mongo')
-        .withExposedPorts(27017)
-        .withPullPolicy(PullPolicy.alwaysPull())
+      const container = new PostgreSqlContainer()
+        .withExposedPorts(5432)
+        .withDatabase('test')
+        .withUsername('test')
+        .withPassword('test')
+        .withPullPolicy(PullPolicy.alwaysPull());
 
       this.container = await container.start();
 
-      this.mongoUri = `mongodb://${this.container.getHost()}:${this.container.getFirstMappedPort()}/test`;
+      this.postgresUri = `postgresql://${this.container.getUsername()}:${this.container.getPassword()}@${this.container.getHost()}:${this.container.getFirstMappedPort()}/${this.container.getDatabase()}`;
     }
   }
 
-  static getMongoUri(): string {
-    if (!this.mongoUri) {
-      throw new Error('MongoDB Testcontainer has not been set up.');
+  static getDatabaseUri(): string {
+    if (!this.postgresUri) {
+      throw new Error('PostgreSQL Testcontainer has not been set up.');
     }
-    return this.mongoUri;
+    return this.postgresUri;
   }
 
   static async teardown(): Promise<void> {
     if (this.container) {
       await this.container.stop();
       this.container = null;
-      this.mongoUri = null;
+      this.postgresUri = null;
     }
   }
 }

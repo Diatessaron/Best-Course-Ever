@@ -1,6 +1,12 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserContextService } from '../../service/UserContextService';
+import { UserContextService } from '../../service/userContextService';
 import { UserRoles } from '../../model/user';
 
 @Injectable()
@@ -11,7 +17,10 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.get<string[]>('roles', context.getHandler());
+    const requiredRoles = this.reflector.get<string[]>(
+      'roles',
+      context.getHandler(),
+    );
     if (!requiredRoles) {
       return true;
     }
@@ -22,7 +31,9 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    const hasRole = requiredRoles.some((role) => user.roles.includes(UserRoles[role as keyof typeof UserRoles]));
+    const hasRole = requiredRoles.some((role) =>
+      user.roles.includes(UserRoles[role as keyof typeof UserRoles]),
+    );
     if (!hasRole) {
       throw new ForbiddenException('Access denied');
     }

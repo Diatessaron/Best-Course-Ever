@@ -1,50 +1,71 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Collection, Db, DeleteResult } from 'mongodb';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { User } from '../model/user';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
-  private userCollection: Collection<User>;
 
   constructor(
-    @Inject('DATABASE_CONNECTION') private readonly db: Db
-  ) {
-    this.userCollection = db.collection('users')
-  }
+    @InjectRepository(User) private readonly userRepository: Repository<User>,
+  ) {}
 
-  async getAllUsers(nameQuery: string, page: number = 1, size: number = 10): Promise<{ users: User[]; total: number; page: number; size: number }> {
-    this.logger.log(`Fetching users: nameQuery=${nameQuery}, page=${page}, size=${size}`);
+  async getAllUsers(
+    nameQuery: string,
+    page: number = 1,
+    size: number = 10,
+  ): Promise<{ users: User[]; total: number; page: number; size: number }> {
+    this.logger.log(
+      `Fetching users: nameQuery=${nameQuery}, page=${page}, size=${size}`,
+    );
 
     if (page < 1 || size < 1) {
-      this.logger.warn(`Invalid pagination parameters: page=${page}, size=${size}`);
+      this.logger.warn(
+        `Invalid pagination parameters: page=${page}, size=${size}`,
+      );
       throw new BadRequestException('Page and size must be positive numbers');
     }
 
-    const query: any = {};
-    if (nameQuery) {
-      query.$text = { $search: nameQuery };
-    }
     const skip = (page - 1) * size;
 
-    const [users, total] = await Promise.all([
-      this.userCollection.find(query, { projection: { email: 0, password: 0 } })
-        .sort({ score: { $meta: 'textScore' } }).skip(skip).limit(size).toArray(),
-      this.userCollection.countDocuments(query),
-    ]);
+    const queryBuilder = this.userRepository.createQueryBuilder('users');
 
-    return {
-      users,
-      total,
-      page,
-      size,
-    };
+    if (nameQuery) {
+      queryBuilder.where(
+        `to_tsvector('english', users.name) @@ plainto_tsquery(:nameQuery)`,
+        { nameQuery },
+      );
+    }
+
+    const [users, total] = await queryBuilder
+      .select([
+        'users._id',
+        'users.name',
+        'users.roles',
+        'users.courses',
+        'users.allowedCourses',
+      ])
+      .orderBy('users.name', 'ASC')
+      .skip(skip)
+      .take(size)
+      .getManyAndCount();
+
+    return { users, total, page, size };
   }
 
   async getUserById(id: string): Promise<User> {
     this.logger.log(`Fetching user with ID: ${id}`);
 
-    const user = await this.userCollection.findOne({ _id: id }, { projection: { email: 0, password: 0 } });
+    const user = await this.userRepository.findOne({
+      where: { _id: id },
+      select: ['_id', 'name', 'roles', 'courses', 'allowedCourses'],
+    });
 
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
@@ -54,32 +75,33 @@ export class UserService {
     return user;
   }
 
-  async updateUser(id: string, user: Partial<User>): Promise<User> {
+  async updateUser(id: string, userUpdates: Partial<User>): Promise<User> {
     this.logger.log(`Updating user with ID: ${id}`);
 
-    //cannot override
-    user._id = id;
-    user.password = undefined
+    const existingUser = await this.userRepository.findOne({
+      where: { _id: id },
+    });
 
-    const result = await this.userCollection.updateOne(
-      { _id: id },
-      { $set: user }
-    );
-
-    if (result.matchedCount === 0) {
+    if (!existingUser) {
       this.logger.warn(`User not found for update with ID: ${id}`);
       throw new NotFoundException(`User with ID "${id}" not found.`);
     }
 
-    return await this.userCollection.findOne({ _id: id });
+    delete userUpdates._id;
+    delete userUpdates.password;
+
+    const updatedUser = this.userRepository.merge(existingUser, userUpdates);
+    await this.userRepository.save(updatedUser);
+
+    return updatedUser;
   }
 
   async deleteUser(id: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete user with ID: ${id}`);
 
-    const result: DeleteResult = await this.userCollection.deleteOne({ _id: id });
+    const result = await this.userRepository.delete(id);
 
-    if (result.deletedCount === 0) {
+    if (result.affected === 0) {
       this.logger.warn(`User not found for ID: ${id}`);
       throw new NotFoundException(`User with ID "${id}" not found.`);
     }

@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { User } from '../model/user';
 import { AuthService } from '../service/authService';
 import { AuthGuard } from '../common/guard/authGuard';
-import { Token } from '../common/decorator/TokenDecorator';
+import { Token } from '../common/decorator/tokenDecorator';
 
 @ApiTags('auth')
 @Controller('auth')
