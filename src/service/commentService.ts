@@ -1,84 +1,109 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Collection, Db, DeleteResult, InsertOneResult, ObjectId, UpdateResult } from 'mongodb';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Comment } from '../model/comment';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class CommentService {
   private readonly logger = new Logger(CommentService.name);
-  private commentCollection: Collection<Comment>;
 
   constructor(
-    @Inject('DATABASE_CONNECTION') private readonly db: Db,
-  ) {
-    this.commentCollection = db.collection('comments');
-  }
+    @InjectRepository(Comment)
+    private readonly commentRepository: Repository<Comment>,
+  ) {}
 
+  @Transactional()
   async getComments(
     targetId: string,
     page: number = 1,
     size: number = 10,
-  ): Promise<{ comments: Comment[]; total: number; page: number; size: number }> {
-    this.logger.log(`Fetching comments for targetId=${targetId}, page=${page}, size=${size}`);
+  ): Promise<{
+    comments: Comment[];
+    total: number;
+    page: number;
+    size: number;
+  }> {
+    this.logger.log(
+      `Fetching comments for targetId=${targetId}, page=${page}, size=${size}`,
+    );
 
     const skip = (page - 1) * size;
 
-    const [comments, total] = await Promise.all([
-      this.commentCollection.find({ targetId: targetId }).skip(skip).limit(size).toArray(),
-      this.commentCollection.countDocuments({ targetId: targetId }),
-    ]);
+    const [comments, total] = await this.commentRepository.findAndCount({
+      where: { targetId },
+      skip,
+      take: size,
+    });
 
-    this.logger.log(`Fetched ${comments.length} comments out of ${total} total matching comments.`);
+    this.logger.log(
+      `Fetched ${comments.length} comments out of ${total} total matching comments.`,
+    );
     return { comments, total, page, size };
   }
 
-  async addComment(targetId: string, comment: Comment): Promise<Comment> {
+  @Transactional()
+  async addComment(
+    targetId: string,
+    comment: Partial<Comment>,
+  ): Promise<Comment> {
     this.logger.log(`Adding a comment to targetId=${targetId}`);
 
-    const result: InsertOneResult<Comment> = await this.commentCollection.insertOne(comment);
-
-    if (!result.acknowledged) {
-      this.logger.error('Failed to insert the new comment into the database.');
-      throw new BadRequestException('Failed to add the comment.');
-    }
-
-    this.logger.log(`Comment added successfully with ID: ${result.insertedId}`);
-    return comment;
+    const savedComment = await this.commentRepository.save(
+      Object.assign(comment, { targetId: targetId }),
+    );
+    this.logger.log(`Comment added successfully with ID: ${savedComment._id}`);
+    return savedComment;
   }
 
+  @Transactional()
   async updateComment(commentId: string, text: string): Promise<Comment> {
     this.logger.log(`Updating comment: ID=${commentId}, text="${text}"`);
 
     if (!text || text.trim() === '') {
       this.logger.warn('Empty text provided for the comment.');
-      throw new BadRequestException('Text for the comment must be provided and cannot be empty.');
+      throw new BadRequestException(
+        'Text for the comment must be provided and cannot be empty.',
+      );
     }
 
-    const result: UpdateResult = await this.commentCollection.updateOne(
-      { _id: commentId },
-      { $set: { text: text } },
-    );
+    const result = await this.commentRepository
+      .createQueryBuilder()
+      .update(Comment)
+      .set({ text })
+      .where('_id = :id', { id: commentId })
+      .returning('*')
+      .execute();
 
-    if (result.matchedCount === 0) {
+    if (!result.raw?.[0]) {
       this.logger.warn(`Comment not found: ID=${commentId}`);
       throw new NotFoundException(`Comment with ID "${commentId}" not found.`);
     }
 
-    const updatedComment = await this.commentCollection.findOne({ commentId });
+    const updatedComment = result.raw[0];
     this.logger.log(`Comment updated successfully: ID=${commentId}`);
     return updatedComment;
   }
 
+  @Transactional()
   async deleteComment(commentId: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete comment: ID=${commentId}`);
 
-    const result: DeleteResult = await this.commentCollection.deleteOne({ _id: commentId });
+    const result = await this.commentRepository.delete(commentId);
 
-    if (result.deletedCount === 0) {
+    if (result.affected === 0) {
       this.logger.warn(`Comment not found: ID=${commentId}`);
       throw new NotFoundException(`Comment with ID "${commentId}" not found.`);
     }
 
     this.logger.log(`Comment deleted successfully: ID=${commentId}`);
-    return { message: `Comment with ID "${commentId}" has been deleted successfully.` };
+    return {
+      message: `Comment with ID "${commentId}" has been deleted successfully.`,
+    };
   }
 }

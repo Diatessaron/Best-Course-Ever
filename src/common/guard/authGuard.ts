@@ -1,19 +1,24 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, Scope, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Scope,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Collection, Db } from 'mongodb';
-import { UserContextService } from '../../service/UserContextService';
+import { UserContextService } from '../../service/userContextService';
+import { InjectRepository } from '@nestjs/typeorm';
+import { BlacklistedToken } from '../../model/blacklistedToken';
+import { Repository } from 'typeorm';
 
 @Injectable({ scope: Scope.REQUEST })
 export class AuthGuard implements CanActivate {
-  private readonly blacklistedTokensCollections: Collection
-
   constructor(
     private readonly jwtService: JwtService,
-    @Inject(UserContextService) private readonly userContextService: UserContextService,
-    @Inject('DATABASE_CONNECTION') private readonly db: Db
-  ) {
-    this.blacklistedTokensCollections = db.collection('blacklistedTokens');
-  }
+    private readonly userContextService: UserContextService,
+    @InjectRepository(BlacklistedToken)
+    private readonly blacklistedTokensRepository: Repository<BlacklistedToken>,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -26,8 +31,14 @@ export class AuthGuard implements CanActivate {
     const token = authHeader.split(' ')[1];
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, { secret: process.env.SECURITY_KEY });
-      const isBlacklisted = await this.blacklistedTokensCollections.findOne({ token: token });
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret: process.env.SECURITY_KEY,
+      });
+
+      const isBlacklisted = await this.blacklistedTokensRepository.findOne({
+        where: { token },
+      });
+
       if (isBlacklisted) {
         throw new UnauthorizedException('Unauthorized');
       }
@@ -37,7 +48,7 @@ export class AuthGuard implements CanActivate {
       request.userContextService = this.userContextService;
 
       return true;
-    } catch (err) {
+    } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

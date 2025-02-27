@@ -2,55 +2,64 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { SurveyController } from '../../src/controller/surveyController';
-import { Db, MongoClient } from 'mongodb';
+import { DataSource } from 'typeorm';
 import { BaseTestContainer } from '../BaseClass';
 import { MigrationService } from '../../src/db/migrationService';
 import { SurveyService } from '../../src/service/surveyService';
 import { v4 } from 'uuid';
 import { Survey, SurveyType } from '../../src/model/survey';
 import { JwtModule, JwtService } from '@nestjs/jwt';
-import { UserRoles } from '../../src/model/user';
-import { UserContextService } from '../../src/service/UserContextService';
+import { User, UserRoles } from '../../src/model/user';
+import { UserContextService } from '../../src/service/userContextService';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MigrationDocument } from '../../src/db/migrationDocument';
+import { BlacklistedToken } from '../../src/model/blacklistedToken';
 
 describe('SurveyController (e2e)', () => {
   let app: INestApplication;
   let moduleFixture: TestingModule;
   let jwtService: JwtService;
   let token: string;
-  let db: Db;
-  let mongoClient: MongoClient;
+  let dataSource: DataSource;
 
   beforeAll(async () => {
     await BaseTestContainer.setup();
-    const mongoUri = BaseTestContainer.getMongoUri();
-    mongoClient = await new MongoClient(mongoUri).connect();
-    db = mongoClient.db('test');
+    const databaseUri = BaseTestContainer.getDatabaseUri();
 
     moduleFixture = await Test.createTestingModule({
       imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          url: databaseUri,
+          entities: [User, Survey, MigrationDocument, BlacklistedToken],
+          synchronize: true,
+        }),
+        TypeOrmModule.forFeature([
+          User,
+          Survey,
+          MigrationDocument,
+          BlacklistedToken,
+        ]),
         JwtModule.register({
           secret: 'test-secret',
           signOptions: { expiresIn: '1h' },
-        })
+        }),
       ],
       controllers: [SurveyController],
-      providers: [
-        UserContextService,
-        SurveyService,
-        MigrationService,
-        {
-          provide: 'DATABASE_CONNECTION',
-          useValue: db,
-        },
-      ],
-    })
-      .compile();
+      providers: [UserContextService, SurveyService, MigrationService],
+    }).compile();
 
     jwtService = moduleFixture.get<JwtService>(JwtService);
-    token = jwtService.sign({ _id: v4(), email: 'test@test.com', roles: [UserRoles.USER] })
+    token = jwtService.sign({
+      _id: v4(),
+      email: 'test@test.com',
+      roles: [UserRoles.USER],
+    });
+    dataSource = moduleFixture.get<DataSource>(DataSource);
 
     //needed to make sure that migrations were executed
-    const migrationService = moduleFixture.get<MigrationService>(MigrationService);
+    const migrationService =
+      moduleFixture.get<MigrationService>(MigrationService);
     await migrationService.runMigrations();
 
     app = moduleFixture.createNestApplication();
@@ -69,19 +78,36 @@ describe('SurveyController (e2e)', () => {
   afterAll(async () => {
     await moduleFixture.close();
     await BaseTestContainer.teardown();
-    await mongoClient.close();
     await app.close();
+  });
+
+  afterEach(async () => {
+    await dataSource.query('TRUNCATE TABLE "surveys" CASCADE');
+    await dataSource.query('TRUNCATE TABLE "users" CASCADE');
   });
 
   describe('Positive Tests', () => {
     it('/survey/:targetId (POST) - Add a survey', async () => {
+      const user = (
+        await dataSource.getRepository(User).insert({
+          _id: v4(),
+          email: 'test1@test.com',
+          password: 'password',
+          name: 'Max Doe',
+          roles: [UserRoles.USER],
+          courses: [v4()],
+          allowedCourses: [v4()],
+        })
+      ).identifiers[0];
+
+      const surveyRepository = dataSource.getRepository(Survey);
       const survey = {
         _id: v4(),
-        type: "INTERESTING",
-        userId: v4(),
+        type: 'INTERESTING',
+        userId: user._id,
         targetId: v4(),
-        rank: 1
-      }
+        rank: 1,
+      };
 
       const response = await request(app.getHttpServer())
         .post(`/survey/${survey.targetId}`)
@@ -90,12 +116,14 @@ describe('SurveyController (e2e)', () => {
 
       expect(response.status).toBe(201);
 
-      const actualSurvey = await db.collection<Survey>("surveys").findOne({ _id: survey._id })
-      expect(actualSurvey).toBeTruthy()
-      expect(actualSurvey.targetId).toBe(survey.targetId)
-      expect(actualSurvey.userId).toBe(survey.userId)
-      expect(actualSurvey.type).toBe(survey.type)
-      expect(actualSurvey.rank).toBe(survey.rank)
+      const actualSurvey = await surveyRepository.findOne({
+        where: { _id: survey._id },
+      });
+      expect(actualSurvey).toBeTruthy();
+      expect(actualSurvey.targetId).toBe(survey.targetId);
+      expect(actualSurvey.userId).toBe(survey.userId);
+      expect(actualSurvey.type).toBe(survey.type);
+      expect(actualSurvey.rank).toBe(survey.rank);
     });
   });
 
@@ -105,7 +133,7 @@ describe('SurveyController (e2e)', () => {
         .post(`/survey/${v4()}`)
         .send({
           _id: v4(),
-          type: "INTERESTING",
+          type: 'INTERESTING',
           rank: 'not-a-number',
         })
         .set('Authorization', `Bearer ${token}`);
@@ -138,7 +166,9 @@ describe('SurveyController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('rank must not be greater than 5');
+      expect(response.body.message).toContain(
+        'rank must not be greater than 5',
+      );
     });
   });
 });

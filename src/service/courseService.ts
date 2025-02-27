@@ -1,122 +1,167 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Collection, Db, DeleteResult, InsertOneResult, UpdateResult } from 'mongodb';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Course } from '../model/course';
-import { Lecture } from '../model/lecture';
+import { In, Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../model/user';
+import { Lecture } from '../model/lecture';
+import { Transactional } from '../common/decorator/transactionalDecorator';
 
 @Injectable()
 export class CourseService {
   private readonly logger = new Logger(CourseService.name);
-  private courseCollection: Collection<Course>;
-  private lectureCollection: Collection<Lecture>;
-  private userCollection: Collection<User>;
 
   constructor(
-    @Inject('DATABASE_CONNECTION') private readonly db: Db,
-  ) {
-    this.courseCollection = db.collection('courses');
-    this.lectureCollection = db.collection('lectures');
-    this.userCollection = db.collection('users');
-  }
+    @InjectRepository(Course)
+    private readonly courseRepository: Repository<Course>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(Lecture)
+    private readonly lectureRepository: Repository<Lecture>,
+  ) {}
 
+  @Transactional()
   async getAllCourses(
     query: string = '',
     page: number = 1,
     size: number = 10,
   ): Promise<{ courses: Course[]; total: number; page: number; size: number }> {
-    this.logger.log(`Fetching courses: query="${query}", page=${page}, size=${size}`);
+    this.logger.log(
+      `Fetching courses: query="${query}", page=${page}, size=${size}`,
+    );
 
     const skip = (page - 1) * size;
 
-    const searchQuery: any = {};
-    if (query) {
-      searchQuery.$text = { $search: query };
-      this.logger.log(`Performing full-text search with query: "${query}"`);
-    }
+    const formattedQuery = query
+      .trim()
+      .split(/\s+/)
+      .map((word) => `${word}:*`)
+      .join(' & ');
 
-    const [courses, total] = await Promise.all([
-      this.courseCollection.find(searchQuery).sort({ score: { $meta: 'textScore' } }).skip(skip).limit(size).toArray(),
-      this.courseCollection.countDocuments(searchQuery),
-    ]);
+    const qb = this.courseRepository
+      .createQueryBuilder('course')
+      .where(`course.search_vector @@ to_tsquery(:query)`, {
+        query: formattedQuery,
+      })
+      .skip(skip)
+      .take(size);
 
-    this.logger.log(`Fetched ${courses.length} courses out of ${total} total matching courses.`);
+    const [courses, total] = await qb.getManyAndCount();
+
+    this.logger.log(
+      `Fetched ${courses.length} courses out of ${total} total matching courses.`,
+    );
     return { courses, total, page, size };
   }
 
+  @Transactional()
   async getCourseById(courseId: string): Promise<Course> {
     this.logger.log(`Fetching course details with ID: ${courseId}`);
 
-    const course = (await this.courseCollection.aggregate(
-      [
-        { $match: { _id: courseId } },
-        { $lookup: { from: 'lectures', localField: 'lectures', foreignField: '_id', as: 'tempLectures' } },
-        { $project: { name: 1, description: 1, tags: 1, difficultyLevel: 1, lectures: '$tempLectures' } },
-      ],
-    ).toArray())[0] as Course;
+    const course = await this.courseRepository.findOne({
+      where: { _id: courseId },
+    });
 
-    this.logger.log(`Course and lessons fetched successfully: ID=${courseId}`);
-    return course;
-  }
-
-  async createCourse(course: Course): Promise<Course> {
-    this.logger.log(`Creating a new course with data: ${JSON.stringify(course)}`);
-
-    const result: InsertOneResult<Course> = await this.courseCollection.insertOne(course);
-
-    if (!result.acknowledged) {
-      this.logger.error('Failed to insert the new course into the database.');
-      throw new BadRequestException('Failed to create the course.');
-    }
-
-    this.logger.log(`Course created successfully with ID: ${result.insertedId}`);
-    return course;
-  }
-
-  async updateCourse(courseId: string, course: Partial<Course>): Promise<Course> {
-    this.logger.log(
-      `Updating course: ID=${courseId}, updateData=${JSON.stringify(course)}`,
-    );
-
-    const result: UpdateResult = await this.courseCollection.updateOne(
-      { _id: courseId },
-      { $set: course },
-    );
-
-    if (result.matchedCount === 0) {
+    if (!course) {
       this.logger.warn(`Course not found: ID=${courseId}`);
       throw new NotFoundException(`Course with ID "${courseId}" not found.`);
     }
 
-    const updatedCourse = await this.courseCollection.findOne({ _id: courseId });
-    this.logger.log(`Course updated successfully: ID=${courseId}`);
-    return updatedCourse;
+    if (course.lectures && course.lectures.length > 0) {
+      const lectures = await this.lectureRepository.findBy({
+        _id: In(course.lectures),
+      });
+      course.lectures = lectures as any;
+    } else {
+      course.lectures = [];
+    }
+
+    this.logger.log(`Course and lectures fetched successfully: ID=${courseId}`);
+    return course;
   }
 
+  @Transactional()
+  async createCourse(course: Course): Promise<Course> {
+    this.logger.log(
+      `Creating a new course with data: ${JSON.stringify(course)}`,
+    );
+
+    const savedCourse = await this.courseRepository.save(course);
+
+    this.logger.log(`Course created successfully with ID: ${savedCourse._id}`);
+    return savedCourse;
+  }
+
+  @Transactional()
+  async updateCourse(
+    courseId: string,
+    course: Partial<Course>,
+  ): Promise<Course> {
+    this.logger.log(
+      `Updating course: ID=${courseId}, updateData=${JSON.stringify(course)}`,
+    );
+
+    const result = await this.courseRepository
+      .createQueryBuilder()
+      .update(Course)
+      .set(course)
+      .where('_id = :id', { id: courseId })
+      .returning('*')
+      .execute();
+
+    if (!result.raw?.[0]) {
+      this.logger.warn(`Course not found: ID=${courseId}`);
+      throw new NotFoundException(`Course with ID "${courseId}" not found.`);
+    }
+
+    this.logger.log(`Course updated successfully: ID=${courseId}`);
+    return result.raw[0];
+  }
+
+  @Transactional()
   async deleteCourse(courseId: string): Promise<{ message: string }> {
     this.logger.log(`Attempting to delete course with ID: ${courseId}`);
 
-    const result: DeleteResult = await this.courseCollection.deleteOne({ _id: courseId });
+    const result = await this.courseRepository.delete(courseId);
 
-    if (result.deletedCount === 0) {
+    if (result.affected === 0) {
       this.logger.warn(`Course not found: ID=${courseId}`);
       throw new NotFoundException(`Course with ID "${courseId}" not found.`);
     }
 
     this.logger.log(`Course deleted successfully: ID=${courseId}`);
-    return { message: `Course with ID "${courseId}" has been deleted successfully.` };
+    return { message: `Course with ID "${courseId}" has been deleted.` };
   }
 
-  async allowUserAccess(courseId: string, userId: string): Promise<{ message: string }> {
-    this.logger.log(`Allowing user with userId=${userId} to access a course with ID: ${courseId}`);
+  @Transactional()
+  async allowUserAccess(
+    courseId: string,
+    userId: string,
+  ): Promise<{ message: string }> {
+    this.logger.log(
+      `Allowing user with userId=${userId} to access a course with ID: ${courseId}`,
+    );
 
-    const updateResult = await this.userCollection.updateOne({ _id: userId }, { $push: { allowedCourses: courseId } });
+    await this.userRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({
+        allowedCourses: () =>
+          `array_append(allowed_courses, '${courseId}'::uuid)`,
+      })
+      .where('_id = :userId', { userId })
+      .execute()
+      .catch((error) => {
+        if (error.code === '23503') {
+          throw new NotFoundException(
+            `Either User with ID "${userId}" or Course with ID "${courseId}" not found.`,
+          );
+        }
+        throw error;
+      });
 
-    if (updateResult.modifiedCount === 0) {
-      this.logger.error(`User with ID: ${userId} not found`)
-      throw new NotFoundException(`User with ID "${userId}" not found. Allowed courses are not updated.`);
-    }
-
-    this.logger.log(`Attempting to delete course with ID: ${courseId}`);
-    return { message: `User with ID "${userId}" has been granted an access to a course with ID: ${courseId} successfully.` };
+    this.logger.log(`Access granted for user ${userId} to course ${courseId}`);
+    return {
+      message: `User with ID "${userId}" has been granted an access to a course with ID: ${courseId} successfully.`,
+    };
   }
 }
